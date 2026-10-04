@@ -20,7 +20,11 @@ const adapter = new PrismaPg({
 
 export const prisma = new PrismaClient({
   adapter,
-  log: env.LOG_LEVEL === 'debug' ? ['warn', 'error'] : ['error'],
+  // `silent` отключает лог Prisma целиком. Это нужно не для красоты: тест на
+  // 409 намеренно роняет уникальный индекс, и Prisma печатает
+  // «Unique constraint failed» в вывод прогона, который при этом зелёный.
+  // Читатель такого вывода сначала ищет, где упало.
+  log: env.LOG_LEVEL === 'silent' ? [] : env.LOG_LEVEL === 'debug' ? ['warn', 'error'] : ['error'],
 });
 
 /**

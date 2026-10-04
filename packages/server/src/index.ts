@@ -1,122 +1,15 @@
-import Fastify from 'fastify';
-import cors from '@fastify/cors';
-import rateLimit from '@fastify/rate-limit';
-import { ZodError } from 'zod';
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
-import type { App } from './lib/app-type.js';
-import { AppError, type ErrorBody } from './lib/errors.js';
+import { buildServer } from './app.js';
 import { connectDatabase, disconnectDatabase } from './db/client.js';
-import { registerHealth } from './routes/health.js';
-import { registerDataFiles } from './plugins/data-files.js';
-import { registerAuthRateLimit } from './plugins/auth-rate-limit.js';
-
-/**
- * Код ответа из произвольной ошибки.
- *
- * Ошибка приходит как `unknown`, и полагаться на то, что у неё есть
- * `statusCode`, нельзя: у Prisma и у внутренних сбоев его нет. Значение
- * проверяется по диапазону, потому что `reply.code()` бросает на значениях вне
- * 100–599, и ошибка при выборе кода должна была бы стать 500, а не упасть.
- */
-function statusCodeOf(error: unknown): number {
-  if (typeof error === 'object' && error !== null && 'statusCode' in error) {
-    const value = (error as { statusCode?: unknown }).statusCode;
-    if (typeof value === 'number' && Number.isInteger(value) && value >= 400 && value <= 599) {
-      return value;
-    }
-  }
-  return 500;
-}
 
 /**
  * Точка входа сервера.
  *
- * Сейчас это проверка связи с базой, три плагина и `/health`. Маршруты
- * `/api/*` и Socket.IO появятся после аутентификации: без неё любой обработчик
- * `/api` был бы доступен всем подряд, и проверять токен в каждом из них
- * пришлось бы заново.
+ * Сборка приложения живёт в `app.ts`, а этот файл только запускает. Разделение
+ * нужно тестам: они импортируют `app.ts` и получают приложение без
+ * побочных эффектов, тогда как импорт `index.ts` поднял бы сервер и занял порт.
  */
-export async function buildServer(): Promise<App> {
-  const app = Fastify({
-    loggerInstance: logger,
-    // Клиент шлёт X-Forwarded-For от Cloudflare Tunnel. Без `trustProxy`
-    // rate-limit считал бы всех клиентов одним адресом — 127.0.0.1 — и первая
-    // же компания из двадцати человек упёрлась бы в общий лимит.
-    trustProxy: true,
-    bodyLimit: 1024 * 1024,
-  });
-
-  // ─── CORS ───────────────────────────────────────────────────────────────────
-  // Ровно один origin. `credentials` нужен, когда клиент перейдёт на cookie;
-  // сейчас токен идёт заголовком, но флаг оставлен сразу, чтобы его включение
-  // не выглядело забытым.
-  await app.register(cors, {
-    origin: env.WEB_ORIGIN,
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  });
-
-  // ─── Rate limit ────────────────────────────────────────────────────────────
-  // Общий предел защищает сервер в целом. Строгий предел на /api/auth — там,
-  // где перебирают токены, — живёт отдельным плагином: ограничение на префикс
-  // внутри @fastify/rate-limit не срабатывает, пока не объявлен хотя бы один
-  // маршрут в этом префиксе.
-  await app.register(rateLimit, {
-    global: true,
-    max: 300,
-    timeWindow: '1 minute',
-  });
-  registerAuthRateLimit(app);
-
-  // ─── Ошибки ────────────────────────────────────────────────────────────────
-  app.setErrorHandler((error, request, reply) => {
-    if (error instanceof AppError) {
-      return reply
-        .code(error.statusCode)
-        .send({ error: { code: error.code, message: error.message, details: error.details } } as ErrorBody);
-    }
-
-    // Нарушение схемы Zod — это ошибка запроса, а не сервера. Отдаём 400 с
-    // перечнем полей: иначе клиент покажет пользователю «что-то пошло не так».
-    if (error instanceof ZodError) {
-      return reply.code(400).send({
-        error: {
-          code: 'validation_failed',
-          message: 'Проверьте заполнение полей',
-          details: { fields: error.issues.map((i) => `${i.path.join('.')}: ${i.message}`) },
-        },
-      } as ErrorBody);
-    }
-
-    // Всё остальное — внутреннее. Клиенту нейтральный текст, подробности в лог:
-    // в сообщении Prisma названия таблиц и колонок.
-    const statusCode = statusCodeOf(error);
-    if (statusCode >= 500) {
-      request.log.error({ err: error }, 'внутренняя ошибка');
-    } else {
-      request.log.warn({ err: error, statusCode }, 'запрос отклонён');
-    }
-    return reply.code(statusCode).send({
-      error: {
-        code: statusCode >= 500 ? 'internal_error' : 'request_failed',
-        message: statusCode >= 500 ? 'Внутренняя ошибка сервера' : 'Запрос отклонён',
-      },
-    } as ErrorBody);
-  });
-
-  app.setNotFoundHandler((request, reply) =>
-    reply.code(404).send({
-      error: { code: 'not_found', message: `Маршрут ${request.method} ${request.url} не найден` },
-    } as ErrorBody),
-  );
-
-  // ─── Маршруты и плагины ────────────────────────────────────────────────────
-  await registerHealth(app);
-  await registerDataFiles(app);
-
-  return app;
-}
 
 /** Запуск сервера с корректным закрытием. */
 async function main(): Promise<void> {
@@ -131,6 +24,7 @@ async function main(): Promise<void> {
 
   // ─── Корректное завершение ─────────────────────────────────────────────────
   let closing = false;
+
   const shutdown = async (signal: string): Promise<void> => {
     if (closing) return;
     closing = true;

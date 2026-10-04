@@ -16,8 +16,10 @@
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "npm run test:lib && npm run test:server",
+    "test:lib": "vitest run",
     "test:watch": "vitest",
+    "test:server": "npm run test --workspace @rd/server",
     "test:coverage": "vitest run --coverage",
     "build": "npm run build --workspace @rd/library && npm run build --workspace @rd/server",
     "build:all": "npm run build --workspaces --if-present",

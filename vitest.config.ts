@@ -22,7 +22,11 @@ export default defineConfig({
   },
   test: {
     setupFiles: ['./vitest.setup.ts'],
-    include: ['packages/*/tests/**/*.test.ts', 'packages/*/tests/**/*.test.tsx'],
+    // Только библиотека. Серверные тесты живут под своим конфигом
+    // (packages/server/vitest.config.ts) и ходят в живую базу: если включить их
+    // сюда, они поедут без setup-файла, который подменяет DATABASE_URL на
+    // тестовую, и удалят рабочие данные через TRUNCATE.
+    include: ['packages/library/tests/**/*.test.ts', 'packages/library/tests/**/*.test.tsx'],
     // По умолчанию Node. Тесты рендерингу объявят среду через
     // `// @vitest-environment jsdom` в шапке файла: тянуть jsdom ради всей
     // конфигурации незачем — DOM нужен только рендереру.

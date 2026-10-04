@@ -1,9 +1,8 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { config as loadEnv } from 'dotenv';
 import { fileURLToPath } from 'node:url';
-import { resolve } from 'node:path';
 import { z } from 'zod';
 import { prisma, disconnectDatabase } from '../db/client.js';
+import { generateToken, hashToken } from '../auth/tokens.js';
 
 /**
  * Первый администратор.
@@ -28,31 +27,7 @@ const envSchema = z.object({
   ADMIN_TOKEN: z.string().default(''),
 });
 
-/** sha256 от токена: hex, в базе хранится он. */
-export function hashToken(token: string): string {
-  return createHash('sha256').update(token, 'utf8').digest('hex');
-}
-
-/**
- * Токен выдаётся в base64url: 32 байта энтропии и алфавит без символов,
- * которые пришлось бы вырезать при вставке в буфер обмена.
- */
-function generateToken(): string {
-  return randomBytes(32).toString('base64url');
-}
-
-/**
- * Сравнение хешей за постоянное время.
- *
- * На практике утечка по времени здесь почти не читается — сравниваются хеши, а не
- * токены, и по сети их не угадать. Но сравнение строк наивным `===` здесь
- * стоило бы написать один раз и потом забыть, а так оно выглядит правильно.
- */
-export function tokensMatch(candidate: string, expectedHash: string): boolean {
-  const a = Buffer.from(hashToken(candidate), 'hex');
-  const b = Buffer.from(expectedHash, 'hex');
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+/** sha256 от токена берётся из auth/tokens.ts — одна реализация на проект. */
 
 async function main(): Promise<void> {
   const parsed = envSchema.safeParse(process.env);

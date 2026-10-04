@@ -19,6 +19,11 @@ data/
 .env.local
 .env.*.local
 
+# Каталог файлов серверных тестов: там setup-файл держит DATA_DIR, чтобы тесты
+# не писали в пользовательские данные.
+.tmp-test-data/
+packages/.tmp-test-data/
+
 # Логи
 *.log
 logs/

@@ -1,25 +1,27 @@
 import fastifyStatic from '@fastify/static';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { join, relative, isAbsolute, resolve, sep } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { env } from '../env.js';
 import type { App } from '../lib/app-type.js';
 import { AppError } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
+import { extractToken } from '../auth/guards.js';
+import { hashToken } from '../auth/tokens.js';
+import { prisma } from '../db/client.js';
+
+const PREFIX = '/files';
 
 /**
  * Раздача файлов из DATA_DIR: книги, аудио, обложки, производные главы.
  *
- * ─── Ограничение, которое снимется следующим подэтапом ────────────────────────
+ * ─── Что здесь закрыто ───────────────────────────────────────────────────────
  *
- * Сейчас эти файлы доступны любому, кто знает путь. Аутентификации ещё нет, и
- * закрыть её здесь нечем: токен проверяется на маршрутах `/api`, а у статики
- * нет места, где он был бы предъявлен. До появления `/api/auth` раздача файлов
- * уязвима по построению, и об этом нужно помнить, а не забыть: файлы лежат под
- * именами вида `files/<bookId>/original.epub`, bookId известен любому, кто был
- * в комнате.
- *
- * Что можно сделать уже сейчас, не дожидаясь аутентификации: проверить путь и
- * не отдавать каталоги. Это делается ниже.
+ * Раздача защищена токеном: cookie `rd_token` либо `?t=<token>`. Cookie нужна
+ * потому, что заголовок `Authorization` браузер не умеет вешать на `<img>` и
+ * `<audio>`; query-параметр оставлен запасным путём для тех же случаев и
+ * включается только здесь — на `/api` он запрещён, потому что токен в URL
+ * попадает в логи и в заголовок `Referer`.
  *
  * ─── Защита от path traversal ────────────────────────────────────────────────
  *
@@ -66,9 +68,19 @@ export async function registerDataFiles(app: App): Promise<void> {
   });
 
   app.addHook('onRequest', async (request, reply) => {
+    // Хук висит на корневой области (у @fastify/static своя изоляция есть не
+    // всегда, и полагаться на неё нельзя), поэтому он видит ВСЕ запросы и
+    // обязан сам ограничить свою область префиксом. Без этой проверки он
+    // требовал токен у /api/auth/login и у /health, и вход в систему был
+    // невозможен: логин возвращал 401.
     const raw = request.url.split('?')[0] ?? '';
+    if (raw !== PREFIX && !raw.startsWith(`${PREFIX}/`)) return;
+
     const decoded = safeDecode(raw);
 
+    // Сначала проверка пути, потом прав: отказ по пути не должен стоить
+    // обращения к базе, а обращение к базе не должно происходить для запроса,
+    // который всё равно будет отклонён.
     if (decoded === null) {
       // Нечитаемый percent-encoding — не отвечаем, а логируем: клиент прислал
       // мусор, и это повод посмотреть, не пробует ли кто-то обход.
@@ -93,9 +105,32 @@ export async function registerDataFiles(app: App): Promise<void> {
     if (rel.startsWith(`..${sep}`) || rel.startsWith('../')) {
       throw AppError.badRequest('Некорректный путь');
     }
+
+    // Права: нужен действующий токен — cookie или `?t=`.
+    //
+    // `requireAuth` сам извлекает токен, но `allowQuery` у него выключен по
+    // умолчанию. Здесь он включается: только этот префикс и только для статики.
+    await requireAuthWithQuery(request, reply);
   });
 
-  logger.info({ root }, 'раздача файлов подключена');
+  logger.info({ root }, 'раздача файлов подключена, требуется токен');
+}
+
+/**
+ * Проверка прав для статики: токен в cookie или в `?t=`.
+ *
+ * Отдельная обёртка над `requireAuth`, потому что `extractToken` по умолчанию
+ * не смотрит в query — и это правильно для `/api`, но не для `<img>`.
+ */
+async function requireAuthWithQuery(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const token = extractToken(request, { allowQuery: true });
+  if (token === null) throw AppError.unauthorized('Требуется токен');
+
+  const user = await prisma.user.findUnique({
+    where: { tokenHash: hashToken(token) },
+    select: { id: true },
+  });
+  if (user === null) throw AppError.unauthorized('Неверный токен');
 }
 
 /** Декодирование percent-encoding. `null`, если строка нечитаема. */

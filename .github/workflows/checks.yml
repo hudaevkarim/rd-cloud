@@ -18,6 +18,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # Тесты сервера ходят в Postgres: два экземпляра, один на прогон.
+    # Локально база живёт в C:\rcdb, в CI поднимается сервис-контейнером —
+    # та же самая Postgres 16, только кем управляет не она.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rdcloud
+          POSTGRES_PASSWORD: rdcloud
+          POSTGRES_DB: rdcloud
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rdcloud"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://rdcloud:rdcloud@127.0.0.1:5432/rdcloud?schema=public
+      # Та же база, что и DATABASE_URL: в CI разворачивать вторую не зачем, а
+      # проверка в setup-файле смотрит только на имя. Локально это разные базы,
+      # потому что рабочая содержит данные.
+      TEST_DATABASE_URL: postgresql://rdcloud:rdcloud@127.0.0.1:5432/rdcloud?schema=public
+
     steps:
       - uses: actions/checkout@v4
 
@@ -29,19 +54,30 @@ jobs:
       - name: Установить зависимости
         run: npm ci
 
-      # Типы и тесты идут до сборки: если types или тесты сломаны, до сборки
+      # Типы и тесты идут до сборки: если типы или тесты сломаны, до сборки
       # дело не дойдёт, и падение будет с осмысленным сообщением.
       - name: Типы
         run: npm run typecheck
 
-      - name: Модульные тесты
-        run: npm test
+      # Тесты библиотеки не ходят в базу — идут первыми и падают быстро.
+      - name: Тесты библиотеки
+        run: npm run test:lib
 
-      # Сборка отдельно от тестов специально. Тесты идут по алиасам на исходники
-      # (`@rd/library/parse` → `src/parse/index.ts`) — так они запускаются на
-      # свежей копии без предварительной сборки. Проверка `dist` ловит то, что
-      # тесты не видят: что пакет действительно собирается и что `exports`
-      # в package.json указывают на существующие файлы.
+      # Миграции к тестовой базе. Скрипт подставляет TEST_DATABASE_URL в
+      # DATABASE_URL и зовёт `migrate deploy`, а не `migrate dev`: у тестовой
+      # базы нет состояния, которое надо сохранять, и `dev` заодно удалил бы её
+      # вместе с данными параллельного прогона.
+      - name: Миграции тестовой базы
+        run: npm run db:migrate:test --workspace @rd/server
+
+      - name: Тесты сервера
+        run: npm run test:server
+
+      # Сборка отдельно от тестов специально. Тесты идут по алиасам на
+      # исходники (`@rd/library/parse` → `src/parse/index.ts`) — так они
+      # запускаются на свежей копии без предварительной сборки. Проверка `dist`
+      # ловит то, что тесты не видят: что пакет действительно собирается и что
+      # `exports` в package.json указывают на существующие файлы.
       - name: Сборка
         run: npm run build
 
