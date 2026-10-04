@@ -1,0 +1,41 @@
+# Зависимости
+node_modules/
+
+# Portable-тулчейн: Node лежит в репозитории, но в git ему не место —
+# это ~100 МБ бинарей, которые восстанавливаются одной командой.
+tools/node/
+
+# Сборка
+dist/
+build/
+*.tsbuildinfo
+
+# Данные приложения: файлы книг, обложки, производные главы, загрузки.
+# В git не попадают никогда — это пользовательские данные.
+data/
+
+# Локальное окружение
+.env
+.env.local
+.env.*.local
+
+# Логи
+*.log
+logs/
+
+# Отчёты и покрытие
+coverage/
+playwright-report/
+test-results/
+reports/
+
+# Служебное
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Сгенерированный Prisma Client (Prisma 7 пишет TS-исходники в проект)
+packages/server/generated/
