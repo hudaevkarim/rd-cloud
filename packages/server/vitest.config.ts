@@ -13,8 +13,23 @@ import { defineConfig } from 'vitest/config';
  * `pool: forks` с одним воркером — тот же довод, что и в корневом конфиге:
  * тесты делят одну базу, и параллельный запуск приводил бы к взаимным
  * блокировкам и недетерминированным падениям.
+ *
+ * Алиасы ведут на исходники `@rd/shared` и `@rd/library`. Собранный `dist`
+ * появился бы только после `npm run build`, а тесты должны идти на свежей
+ * копии репозитория — ради них и настроен `db:migrate:test`.
  */
+const src = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
+
 export default defineConfig({
+  resolve: {
+    alias: [
+      { find: /^@rd\/shared$/, replacement: src('../shared/src/index.ts') },
+      { find: /^@rd\/shared\/anchors$/, replacement: src('../shared/src/anchors.ts') },
+      { find: /^@rd\/library\/parse$/, replacement: src('../library/src/parse/index.ts') },
+      { find: /^@rd\/library\/anchor$/, replacement: src('../library/src/anchor/index.ts') },
+      { find: /^@rd\/library\/render$/, replacement: src('../library/src/render/index.ts') },
+    ],
+  },
   test: {
     environment: 'node',
     setupFiles: ['./tests/helpers/setup.ts'],

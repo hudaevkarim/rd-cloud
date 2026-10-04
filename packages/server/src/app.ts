@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import { ZodError } from 'zod';
 import { env } from './env.js';
@@ -10,6 +11,8 @@ import { AppError, type ErrorBody } from './lib/errors.js';
 import { registerHealth } from './routes/health.js';
 import { authRoutes } from './routes/auth.js';
 import { adminRoutes } from './routes/admin.js';
+import { roomRoutes } from './routes/rooms.js';
+import { bookRoutes } from './routes/books.js';
 import { registerDataFiles } from './plugins/data-files.js';
 
 /**
@@ -21,6 +24,9 @@ import { registerDataFiles } from './plugins/data-files.js';
  * ничего не запускается при импорте, и тесты берут приложение через `inject()`
  * без сети вообще.
  */
+
+/** Верхняя страховка для загрузки; настоящий лимит — по `kind`, в потоке. */
+const AUDIO_LIMIT = 2 * 1_024 * 1_024 * 1_024;
 
 /**
  * Код ответа из произвольной ошибки.
@@ -119,6 +125,22 @@ export async function buildServer(): Promise<App> {
   // равно нечем — сервер сверяет токен с базой.
   await app.register(cookie);
 
+  // ─── Загрузка файлов ───────────────────────────────────────────────────────
+  // Предел здесь — только верхняя страховка (2 ГБ + немного на поля формы).
+  // Настоящий лимит проверяется в потоке по полю `kind`: 50 МБ для текста и
+  // 2 ГБ для аудио. Общий предел не может быть один, потому что текст и аудио
+  // отличаются на порядок.
+  await app.register(multipart, {
+    limits: {
+      fileSize: AUDIO_LIMIT + 1_024 * 1_024,
+      files: 1,
+      fields: 20,
+      // Поля формы приходят раньше файла; суммарно они весят копейки, но
+      // ограничение защищает от запроса с тысячей мелких полей.
+      fieldSize: 8 * 1_024,
+    },
+  });
+
   // ─── Маршруты и плагины ────────────────────────────────────────────────────
   await registerHealth(app);
 
@@ -151,6 +173,8 @@ export async function buildServer(): Promise<App> {
   );
 
   await app.register(adminRoutes, { prefix: '/api/admin' });
+  await app.register(roomRoutes, { prefix: '/api/rooms' });
+  await app.register(bookRoutes, { prefix: '/api' });
 
   await registerDataFiles(app);
 

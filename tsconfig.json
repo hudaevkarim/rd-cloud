@@ -15,7 +15,9 @@
     "paths": {
       "@rd/library/parse": ["packages/library/src/parse/index.ts"],
       "@rd/library/anchor": ["packages/library/src/anchor/index.ts"],
-      "@rd/library/render": ["packages/library/src/render/index.ts"]
+      "@rd/library/render": ["packages/library/src/render/index.ts"],
+      "@rd/shared": ["packages/shared/src/index.ts"],
+      "@rd/shared/anchors": ["packages/shared/src/anchors.ts"]
     }
   },
   "include": [

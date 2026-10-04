@@ -18,6 +18,8 @@ export default defineConfig({
       { find: /^@rd\/library\/parse$/, replacement: src('parse/index.ts') },
       { find: /^@rd\/library\/anchor$/, replacement: src('anchor/index.ts') },
       { find: /^@rd\/library\/render$/, replacement: src('render/index.ts') },
+      { find: /^@rd\/shared$/, replacement: fileURLToPath(new URL('./packages/shared/src/index.ts', import.meta.url)) },
+      { find: /^@rd\/shared\/anchors$/, replacement: fileURLToPath(new URL('./packages/shared/src/anchors.ts', import.meta.url)) },
     ],
   },
   test: {

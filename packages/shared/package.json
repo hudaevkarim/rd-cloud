@@ -4,5 +4,28 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "Общие типы и схемы валидации: якоря комментариев, роли, DTO. Источник истины для API-контракта."
+  "description": "Общие типы и валидация: якоря комментариев, роли, DTO. Источник истины для API-контракта.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./anchors": {
+      "types": "./dist/anchors.d.ts",
+      "default": "./dist/anchors.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@rd/library": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "5.9.3"
+  }
 }

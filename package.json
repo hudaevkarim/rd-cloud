@@ -21,7 +21,7 @@
     "test:watch": "vitest",
     "test:server": "npm run test --workspace @rd/server",
     "test:coverage": "vitest run --coverage",
-    "build": "npm run build --workspace @rd/library && npm run build --workspace @rd/server",
+    "build": "npm run build --workspace @rd/library && npm run build --workspace @rd/shared && npm run build --workspace @rd/server",
     "build:all": "npm run build --workspaces --if-present",
     "db:migrate": "npm run db:migrate --workspace @rd/server",
     "db:seed": "npm run db:seed --workspace @rd/server",

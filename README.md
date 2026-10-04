@@ -12,15 +12,16 @@
 ```
 packages/
   library/   разбор EPUB/FB2, якоря, рендеринг   ← готов, 83 теста
-  shared/    общие типы и схемы валидации         ← пусто
-  server/    Fastify + Prisma + статика           ← аутентификация, админка
+  shared/    якоря комментариев, роли, DTO       ← validateAnchor
+  server/    Fastify + Prisma + статика           ← комнаты, книги, админка
   web/       React + Vite + Tailwind             ← пусто
 ```
 
-**Есть:** схема БД (11 таблиц) и миграция, сид администратора, `/health`,
-раздача файлов, вход по токену, админ-панель. 120 тестов.
+**Есть:** схема БД (11 таблиц) и миграция, аутентификация по токену, админка,
+комнаты с приглашениями и заявками, загрузка книг с разбором на сервере,
+каталог. 155 тестов.
 
-**Нет:** комнат, книг, комментариев, Socket.IO, клиента.
+**Нет:** комментариев, уведомлений, Socket.IO, клиента.
 
 ## Требования к машине
 
@@ -130,7 +131,44 @@ cookie работает сама.
 | `GET` | `/api/admin/rooms` | админ |
 | `DELETE` | `/api/admin/rooms/:id` | админ |
 | `GET` | `/api/admin/stats` | админ |
+| `POST` | `/api/admin/catalog` | админ, multipart |
+| `DELETE` | `/api/admin/catalog/:id` | админ |
+| `POST` | `/api/rooms` | вход |
+| `GET` | `/api/rooms` | вход, мои комнаты |
+| `GET` | `/api/rooms/search?q=` | вход |
+| `POST` | `/api/rooms/join-by-code` | вход |
+| `GET` | `/api/rooms/:id` | участник |
+| `PATCH` `DELETE` | `/api/rooms/:id` | владелец |
+| `POST` | `/api/rooms/:id/leave` | участник |
+| `GET` | `/api/rooms/:id/members` | участник |
+| `POST` | `/api/rooms/:id/invite` | участник |
+| `POST` | `/api/rooms/:id/join-request` | вход |
+| `GET` | `/api/rooms/:id/join-requests` | участник |
+| `POST` | `/api/rooms/:id/join-requests/:rid/approve` `reject` | участник |
+| `POST` | `/api/rooms/:rid/books/upload` | участник, multipart |
+| `POST` | `/api/rooms/:rid/books/from-catalog` | участник |
+| `GET` | `/api/rooms/:rid/books` | участник |
+| `GET` | `/api/books/:id` | вход |
+| `GET` | `/api/books/:id/index.json` | вход, кэш 1 ч |
+| `GET` | `/api/books/:id/ch/:n.json` | вход, кэш 1 сутки |
+| `GET` | `/api/books/:id/file?kind=` | участник |
+| `DELETE` | `/api/books/:id` | владелец комнаты или админ |
+| `GET` | `/api/catalog?q=` | вход |
 | `GET` | `/files/**` | токен в cookie или `?t=` |
+
+## Загрузка файлов
+
+`multipart/form-data`. **Текстовые поля обязаны идти раньше файла** — иначе
+сервер не знает, какой лимит применять (50 МБ для текста, 2 ГБ для аудио),
+и откажет.
+
+Поля: `kind` (`text`|`audio`), `format`, `title`, `author`, опционально
+`description`, `language`, `year`, файл в поле `file`.
+
+Порядок на диске и в базе выбран так, чтобы не оставалось «книги без файла»:
+файл пишется в `original.part`, после успешного конца переименовывается, и
+только потом появляется запись в базе. Обрыв соединения удаляет и файл, и его
+каталог.
 
 ## `@rd/library`
 
@@ -154,8 +192,8 @@ cookie работает сама.
 
 ```
 загрузка (один раз)   сервер разбирает EPUB/FB2 сам и пишет
-                      data/derived/<bookId>/index.json
-                      data/derived/<bookId>/ch/<n>.json
+                      data/derived/<fileId>/index.json
+                      data/derived/<fileId>/ch/0000.json
 
 чтение                клиент берёт index.json (десятки КБ) и подгружает
                       главы по мере надобности
@@ -163,6 +201,11 @@ cookie работает сама.
 
 В `rd` клиент скачивал книгу целиком и разбирал у себя. На телефоне это и было
 главным препятствием.
+
+Идентификатор каталога на диске — UUID, выданный при загрузке, а не `BookFile.id`
+из базы. Поэтому производные пути берутся из колонки `derivedPath`, а не
+собираются из идентификатора записи: это разные значения, и подстановка одного
+вместо другого молча указывала бы на несуществующий каталог.
 
 ## Лицензия
 
