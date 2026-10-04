@@ -19,8 +19,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "build": "npm run build --workspace @rd/library",
-    "build:all": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspace @rd/library && npm run build --workspace @rd/server",
+    "build:all": "npm run build --workspaces --if-present",
+    "db:migrate": "npm run db:migrate --workspace @rd/server",
+    "db:seed": "npm run db:seed --workspace @rd/server",
+    "dev": "npm run dev --workspace @rd/server"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

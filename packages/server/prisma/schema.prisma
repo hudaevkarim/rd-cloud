@@ -1,0 +1,238 @@
+// Схема данных rd-cloud.
+//
+// Генератор `prisma-client` (не `prisma-client-js`) и обязательный `output` —
+// так в Prisma 7.10: клиент пишется TypeScript-исходниками в проект и собирается
+// вместе с ним, а не в node_modules. Поле `url` у datasource убрано в седьмой
+// версии — подключение к базе задаётся в prisma.config.ts.
+//
+// ─── Соглашения, которые здесь закреплены ─────────────────────────────────────
+//
+// 1. `User.tokenHash` — только sha256 от токена. Сам токен в базе не лежит:
+//    дамп базы не должен выдавать всем желающим доступ ко всем аккаунтам.
+//
+// 2. `BookFile.filePath` и `Book.coverPath` — всегда относительный путь от
+//    DATA_DIR. Абсолютный путь в базе сделал бы перенос на другую машину
+//    ручной правкой каждой строки.
+//
+// 3. `anchor` на Comment — это Json со структурой TextAnchor | AudioAnchor |
+//    PageAnchor из @rd/library/anchor. `anchorType` дублирует его для индексов
+//    и выборок, но источником правды является `anchor`: разъехаться они могут
+//    только если кто-то напишет миграцию, и такую миграцию видно в ревью.
+//
+// 4. `anchorType` и `positionType` — строки, а не enums. Набор значений
+//    расширяется по мере добавления форматов, и enum заставил бы миграцию
+//    данных на ровно тот случай, когда новая книга уже загружена.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Пользователи ─────────────────────────────────────────────────────────────
+
+model User {
+  id          String    @id @default(cuid())
+  username    String    @unique
+  displayName String
+  tokenHash   String    @unique // sha256 от 32-байтного токена
+  role        String    @default("user") // "user" | "admin"
+  avatar      String?
+  bio         String?
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime?
+
+  memberships   RoomMember[]
+  ownedRooms    Room[]          @relation("RoomOwner")
+  comments      Comment[]
+  reactions     Reaction[]
+  presence      Presence[]
+  notifications Notification[]
+  uploadedBooks Book[]          @relation("BookUploader")
+  joinRequests  JoinRequest[]
+}
+
+// ─── Комнаты ─────────────────────────────────────────────────────────────────
+
+model Room {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  inviteCode  String   @unique
+  isPublic    Boolean  @default(false) // видна ли в поиске
+  ownerId     String
+  owner       User     @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  members      RoomMember[]
+  books        RoomBook[]
+  comments     Comment[]
+  joinRequests JoinRequest[]
+  presence     Presence[]
+
+  @@index([isPublic])
+  @@index([ownerId])
+}
+
+model RoomMember {
+  id       String   @id @default(cuid())
+  roomId   String
+  userId   String
+  role     String   @default("member") // "owner" | "member"
+  joinedAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+}
+
+model JoinRequest {
+  id          String    @id @default(cuid())
+  roomId      String
+  userId      String
+  status      String    @default("pending") // "pending" | "approved" | "rejected"
+  createdAt   DateTime  @default(now())
+  decidedAt   DateTime?
+  decidedById String?
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId, status])
+  @@index([userId, status])
+}
+
+// ─── Книги ───────────────────────────────────────────────────────────────────
+
+model Book {
+  id           String   @id @default(cuid())
+  title        String
+  author       String
+  description  String?
+  coverPath    String? // относительный путь от DATA_DIR
+  isCatalog    Boolean  @default(false) // true = в общем каталоге классики
+  language     String? // "ru", "en"
+  year         Int?
+  uploadedById String?
+  uploadedBy   User?    @relation("BookUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+
+  files    BookFile[]
+  rooms    RoomBook[]
+  comments Comment[]
+
+  @@index([isCatalog])
+  @@index([author])
+  @@index([title])
+}
+
+model BookFile {
+  id            String   @id @default(cuid())
+  bookId        String
+  kind          String // "text" | "audio"
+  format        String // "epub" | "fb2" | "pdf" | "mp3" | "m4b"
+  filePath      String // относительный путь от DATA_DIR
+  fileSize      Int
+  mimeType      String
+  durationSec   Int? // для аудио
+  parserVersion String? // для text
+  derivedPath   String? // для text: путь к директории с index.json и ch/
+  createdAt     DateTime @default(now())
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, kind])
+  @@index([bookId])
+}
+
+model RoomBook {
+  id      String   @id @default(cuid())
+  roomId  String
+  bookId  String
+  addedAt DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, bookId])
+  @@index([roomId])
+}
+
+// ─── Комментарии ─────────────────────────────────────────────────────────────
+
+model Comment {
+  id           String   @id @default(cuid())
+  roomId       String
+  bookId       String
+  bookFileKind String // "text" | "audio" — к какому файлу книги относится
+  userId       String
+  text         String
+  anchor       Json // TextAnchor | AudioAnchor | PageAnchor
+  anchorType   String // "text" | "timestamp" | "page" — для индексов
+  isSpoiler    Boolean  @default(false)
+  isResolved   Boolean  @default(false)
+  parentId     String?
+  createdAt    DateTime @default(now())
+  editedAt     DateTime?
+
+  room      Room       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  book      Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Comment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[]  @relation("CommentReplies")
+  reactions Reaction[]
+
+  @@index([roomId, bookId, anchorType])
+  @@index([userId])
+  @@index([parentId])
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  commentId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId, emoji])
+}
+
+// ─── Presence (кто где сейчас) ───────────────────────────────────────────────
+
+model Presence {
+  id           String   @id @default(cuid())
+  userId       String
+  roomId       String
+  positionType String // "text" | "timestamp"
+  positionData Json
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roomId])
+}
+
+// ─── Уведомления ─────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String // "join_request" | "join_approved" | "new_book" | "reaction" | "reply"
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([createdAt])
+}

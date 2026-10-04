@@ -38,4 +38,4 @@ Thumbs.db
 !.vscode/extensions.json
 
 # Сгенерированный Prisma Client: Prisma 7 пишет TypeScript-исходники в проект
-packages/server/generated/
+packages/server/src/generated/
