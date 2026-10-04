@@ -221,13 +221,35 @@
   letter-spacing: var(--track-ui);
 }
 
+/*
+  Крестик закрытия.
+  Видимый знак — 20px, а площадь нажатия — `--touch`. Замерено на витрине:
+  без растяжки кнопка получалась 32×32, и на телефоне в неё попадали
+  примерно четыре раза реже, чем в кнопку обычного размера.
+*/
 .dialog__close {
-  min-width: 32px;
-  min-height: 32px;
+  position: relative;
   font-size: 20px;
   line-height: 1;
   color: var(--ink-2);
   transition: color var(--transition);
+}
+
+/*
+  Растянутая область нажатия.
+  Область нажатия — 44×44, а сам знак остаётся 20px, поэтому у кнопок нет
+  рамки и заливки: увеличивать нужно не их, а то, что под ними.
+*/
+.dialog__close::before,
+.toast__close::before {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  /* Размер меньше 44px не даёт: `inset` центрирует область, а её размер
+     задаётся явно, потому что размер самого знака — 20px. */
+  width: var(--touch);
+  height: var(--touch);
 }
 
 .dialog__close:hover {
@@ -313,6 +335,9 @@
 }
 
 .toast__close {
+  /* `relative` обязателен: на него растягивается область нажатия
+     `--touch`, объявленная общим правилом с `.dialog__close`. */
+  position: relative;
   flex-shrink: 0;
   font-size: 18px;
   line-height: 1;

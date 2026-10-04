@@ -1,0 +1,342 @@
+/**
+ * Стили страницы компонентов.
+ *
+ * Отдельным файлом и вне обычной раскладки: страница не должна выглядеть как
+ * продукт, иначе её показ будет вводить в заблуждение о реальном интерфейсе.
+ */
+
+.devpage {
+  /* Ширина всей страницы, а не колонки: витрина должна показывать компоненты
+     на той ширине, которую выбрана, а не упираться в --measure-wide. */
+  width: 100%;
+  padding: var(--space-6) var(--gutter) var(--space-16);
+}
+
+.devpage__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--rule);
+}
+
+.devpage__title {
+  font-size: var(--text-title-sm);
+}
+
+.devpage__hint {
+  margin: var(--space-1) 0 0;
+}
+
+.devpage__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.devpage__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.devpage__width {
+  min-width: 64px;
+}
+
+.devpage__width.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Рамка кадра ──────────────────────────────────────────────────────────── */
+
+.devpage__frame {
+  border: 1px solid var(--rule);
+  /* Рамка подвинута на полпикселя, иначе при нечётной ширине в 1px она
+     располагалась бы на дробном пикселе и мылилась. */
+  margin-left: -0.5px;
+}
+
+.devpage__iframe {
+  display: block;
+  width: 100%;
+  height: 70vh;
+  border: none;
+  background: var(--paper);
+}
+
+/* Внутри кадра страница занимает всю ширину и без полей: поля витрины не
+   должны вычитаться из выбранной ширины, иначе 320px превратились бы в 288. */
+.showcase-frame {
+  width: 100%;
+  padding: var(--space-4);
+}
+
+/* ─── Витрина ──────────────────────────────────────────────────────────────── */
+
+.showcase {
+  width: 100%;
+}
+
+.showcase__group {
+  padding: var(--space-8) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.showcase__group:last-child {
+  border-bottom: none;
+}
+
+.showcase__group-title {
+  font-size: var(--text-ui);
+  letter-spacing: var(--track-ui);
+  margin-bottom: var(--space-2);
+}
+
+.showcase__note {
+  margin: 0 0 var(--space-6);
+  max-width: var(--measure);
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+}
+
+.showcase__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.showcase__row-label {
+  /* Фиксированная ширина колонки подписей: без неё подпись «наведение» и
+     «живые» сдвигали бы содержимое на разную величину, и строки витрины
+     выглядели бы неровно. */
+  flex: 0 0 88px;
+  padding-top: var(--space-3);
+}
+
+.showcase__row-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.showcase__row-body .field {
+  /* Поле в витрине не должно занимать всю ширину строки: иначе на 320px
+     подпись и поле не поместятся рядом. */
+  margin-bottom: 0;
+  min-width: 200px;
+  flex: 1;
+}
+
+/* Статичные копии правил наведения. Настоящее наведение проверяется мышью. */
+.btn--hover-preview:not(:disabled) {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn--hover-preview-ghost:not(:disabled) {
+  color: var(--ink);
+}
+
+.btn--hover-preview-danger:not(:disabled) {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+/* ─── Цвета ────────────────────────────────────────────────────────────────── */
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.swatch {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.swatch__chip {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  /* Граница обязательна: на светлой теме чипы `--paper` и `--paper-2`
+     растворились бы на фоне, и было бы не видно, где что. */
+  border: 1px solid var(--rule);
+}
+
+.swatch__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.swatch__name {
+  font-size: 13px;
+}
+
+.swatch__value {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* ─── Отступы ──────────────────────────────────────────────────────────────── */
+
+.spacing__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.spacing__name {
+  flex: 0 0 96px;
+  font-size: 13px;
+}
+
+.spacing__bar {
+  height: 12px;
+  /* Полоса может быть шире строки на узком экране: --space-16 это 64px плюс
+     подпись и значение, а на 320px места не хватает. */
+  max-width: 100%;
+  flex-shrink: 1;
+  background: var(--accent);
+}
+
+.spacing__bar--measure {
+  background: var(--ink-2);
+}
+
+.spacing__value {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* ─── Типографика ──────────────────────────────────────────────────────────── */
+
+.typo__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.typo__row:last-child {
+  border-bottom: none;
+}
+
+/* Измеренные параметры образца. Не подпись «как задумано», а числа,
+   снятые с самого образца, — см. `Sample` в `Showcase.tsx`. */
+.typo__facts {
+  color: var(--ink-2);
+}
+
+/*
+  Заголовок образца.
+  Раньше размер задавался прямо в `style={{ fontSize: … }}`, и трекание с
+  интерлиньяжем оставались от `<code>`, то есть от браузера. Образец должен
+  нести те же токены, что и настоящий заголовок, иначе он показывает не то,
+  что будет на странице.
+*/
+.typo__ui-sm {
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  line-height: var(--leading-ui);
+  letter-spacing: var(--track-ui);
+}
+
+.typo__title {
+  font-family: var(--font-ui);
+  font-size: var(--text-title);
+  font-weight: 500;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--track-title);
+}
+
+/* Логотип на витрине. Токена на размер логотипа нет: он встречается в одном
+   месте — в шапке, — и заводить под него токен значило бы завести шкалу из
+   одного значения. Размер задан здесь и виден в измеренной подписи рядом. */
+.typo__logo {
+  font-size: 28px;
+}
+
+/* Книжный образец — абзац, у него есть отступы, которых не должно быть видно. */
+.typo__row--book .book,
+.typo__row > .book {
+  margin: 0;
+  max-width: var(--measure);
+}
+
+/* ─── Уведомления и окно ───────────────────────────────────────────────────── */
+
+.showcase__toasts {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  inset: auto;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  max-width: 420px;
+}
+
+/*
+  Окно внутри рамки, а не поверх страницы.
+  Позиционирование меняется только здесь — сама разметка диалога остаётся той
+  же, что в приложении, иначе витрина показывала бы то, чего никогда не будет.
+*/
+.showcase__dialog-frame {
+  border: 1px dashed var(--rule);
+  padding: var(--space-4);
+}
+
+.showcase__inline-dialog {
+  position: static;
+  display: block;
+  padding: 0;
+}
+
+.showcase__inline-dialog .dialog-backdrop {
+  /* Подложка внутри рамки не должна перекрывать содержимое самой витрины:
+     на настоящей странице она затемняет всё, здесь — только рамку. */
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.showcase__inline-dialog .dialog {
+  position: relative;
+  animation: none;
+}
+
+/* ─── Узкие ширины ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .showcase__row-label {
+    /* Подпись над содержимым, а не слева: на 320px колонка в 88px плюс поле
+       в 200px не помещаются, и строка переносилась бы встык. */
+    flex: 1 0 100%;
+    padding-top: 0;
+  }
+
+  .devpage__bar {
+    align-items: flex-start;
+  }
+}

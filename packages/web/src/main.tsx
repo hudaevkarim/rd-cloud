@@ -14,6 +14,10 @@ import './styles/global.css';
 import './styles/components.css';
 import './styles/layout.css';
 import './styles/pages.css';
+// Стили витрины подключаются всегда: страница удаляется одним импортом,
+// а отдельный подключатель в vite.config означал бы ещё одно место, где
+// о ней надо вспомнить.
+import './styles/showcase.css';
 
 /**
  * Точка входа клиента.

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { Layout } from './components/layout/Layout.js';
 import { RequireAdmin, RequireAuth } from './components/RequireAuth.js';
 import { LoginPage } from './pages/Login.js';
+import { ShowcasePage } from './dev/ShowcasePage.js';
 import {
   AdminPage,
   CatalogPage,
@@ -30,6 +31,15 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+
+      {/*
+        Витрина компонентов — вне каркаса и вне `RequireAuth`.
+        Вне каркаса: у неё своя панель управления шириной, а шапка с ником и
+        нижняя навигация мешали бы разглядывать компоненты. Вне `RequireAuth`:
+        страница нужна, когда сессии ещё нет, — ровно в момент, когда
+        разрабатывают форму входа.
+      */}
+      <Route path="/dev/components" element={<ShowcasePage />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
