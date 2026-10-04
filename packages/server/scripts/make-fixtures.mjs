@@ -171,7 +171,8 @@ writeFileSync(join(outDir, 'test-audio.mp3'), mp3);
 console.log(`EPUB: ${join(outDir, 'test-book.epub')} — ${epub.length} байт`);
 console.log(`MP3 : ${join(outDir, 'test-audio.mp3')} — ${mp3.length} байт (ожидается ~26 с)`);
 
-// Проверяем, что то, что мы собрали, действительно разбирается.
-const { parseEpub } = await import('@rd/library/parse');
-const book = parseEpub(new Uint8Array(epub));
-console.log(`Разбор EPUB: «${book.title}», глав ${book.chapters.length}, блоков ${book.totalBlocks}`);
+// Проверки разбора здесь намеренно нет. Скрипт запускается отдельным
+// процессом из `beforeAll` тестов, а `@rd/library` в нём разрешился бы в
+// `dist`, которого на этот момент ещё нет: в CI тесты идут ДО сборки. Такая
+// проверка роняла бы 13 тестов на «не найден модуль» — и только в CI, где
+// порядок шагов другой. Разбор и так проверяется самим `books.test.ts`.

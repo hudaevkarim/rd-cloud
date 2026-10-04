@@ -18,9 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # Тесты сервера ходят в Postgres: два экземпляра, один на прогон.
-    # Локально база живёт в C:\rcdb, в CI поднимается сервис-контейнером —
-    # та же самая Postgres 16, только кем управляет не она.
+    # Тесты сервера ходят в Postgres: экземпляр поднимается сервис-контейнером,
+    # локально база живёт в C:\rcdb.
     services:
       postgres:
         image: postgres:16-alpine
@@ -28,6 +27,17 @@ jobs:
           POSTGRES_USER: rdcloud
           POSTGRES_PASSWORD: rdcloud
           POSTGRES_DB: rdcloud
+          # Коллация ICU, а не умолчание образа.
+          #
+          # База с коллацией `C` приводит регистр ТОЛЬКО для ASCII, поэтому
+          # поиск «пушкин» не нашёл бы «А. С. Пушкин», а lower() не сравнил бы
+          # «Анна» с «анна». Локально это исправлено через
+          # LOCALE_PROVIDER icu в tools/setup-databases.sql; здесь то же самое
+          # задаётся на этапе initdb, потому что сервис создаёт базу сам.
+          #
+          # Без этой строки тест «поиск по каталогу находит по автору» падал бы
+          # в CI, проходя локально: расхождение окружений, которое стоит дорого.
+          POSTGRES_INITDB_ARGS: --locale-provider=icu --icu-locale=ru-RU
         ports:
           - 5432:5432
         options: >-
