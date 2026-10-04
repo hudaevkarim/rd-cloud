@@ -1,0 +1,13 @@
+{
+  "name": "@rd/web",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "React + Vite + Tailwind. Адаптивный клиент и PWA.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}

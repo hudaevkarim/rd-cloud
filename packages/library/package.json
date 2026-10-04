@@ -1,0 +1,37 @@
+{
+  "name": "@rd/library",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Разбор EPUB/FB2, якоря комментариев, рендеринг книги без innerHTML. Вынесено из проекта rd.",
+  "main": "./dist/render/index.js",
+  "types": "./dist/render/index.d.ts",
+  "exports": {
+    "./parse": {
+      "types": "./dist/parse/index.d.ts",
+      "default": "./dist/parse/index.js"
+    },
+    "./anchor": {
+      "types": "./dist/anchor/index.d.ts",
+      "default": "./dist/anchor/index.js"
+    },
+    "./render": {
+      "types": "./dist/render/index.d.ts",
+      "default": "./dist/render/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.1",
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "5.9.3"
+  }
+}

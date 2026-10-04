@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "baseUrl": "../..",
+    "paths": {
+      "@rd/library/parse": ["packages/library/src/parse/index.ts"],
+      "@rd/library/anchor": ["packages/library/src/anchor/index.ts"],
+      "@rd/library/render": ["packages/library/src/render/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "tests/**/*.tsx"]
+}

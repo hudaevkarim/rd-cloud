@@ -1,0 +1,13 @@
+{
+  "name": "@rd/server",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Fastify + Prisma + Socket.IO. Единственный источник правды.",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node --import tsx src/index.ts"
+  }
+}

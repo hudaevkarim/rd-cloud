@@ -1,0 +1,71 @@
+name: Проверки
+
+# Запускается на push в main и на каждом pull request. Ничего не публикует и не
+# имеет прав на запись: workflow только говорит, зелёное ли состояние.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Новый запущенный раунд отменяет предыдущий: править CI приходится часто, а
+# ждать его результата незачем.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      # Типы и тесты идут до сборки: если types или тесты сломаны, до сборки
+      # дело не дойдёт, и падение будет с осмысленным сообщением.
+      - name: Типы
+        run: npm run typecheck
+
+      - name: Модульные тесты
+        run: npm test
+
+      # Сборка отдельно от тестов специально. Тесты идут по алиасам на исходники
+      # (`@rd/library/parse` → `src/parse/index.ts`) — так они запускаются на
+      # свежей копии без предварительной сборки. Проверка `dist` ловит то, что
+      # тесты не видят: что пакет действительно собирается и что `exports`
+      # в package.json указывают на существующие файлы.
+      - name: Сборка
+        run: npm run build
+
+      # Пустой dist означал бы, что сборка «прошла», ничего не сделав. Проверяем
+      # все три точки входа: именно на них ссылается server и web.
+      - name: Проверить артефакты сборки
+        run: |
+          test -f packages/library/dist/parse/index.js
+          test -f packages/library/dist/anchor/index.js
+          test -f packages/library/dist/render/index.js
+          echo "библиотека собрана"
+
+      # Отчёт о покрытии нужен и при зелёном прогоне: иначе узнать, что
+      # проверял каждый тест, можно только по логам CI, а они живут 30 дней.
+      - name: Отчёт о покрытии
+        if: always()
+        run: npm run test:coverage
+        continue-on-error: true
+
+      - name: Файлы покрытия
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: ignore

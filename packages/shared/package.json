@@ -1,0 +1,8 @@
+{
+  "name": "@rd/shared",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Общие типы и схемы валидации: якоря комментариев, роли, DTO. Источник истины для API-контракта."
+}

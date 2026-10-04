@@ -1,0 +1,32 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+
+    /* Web собирает Vite: Bundler попроще NodeNext — разрешает `.js` на
+       TypeScript-исходники и не требует расширений в относительных импортах.
+       Сервер запускается в Node, поэтому у него в tsconfig будет NodeNext. */
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@rd/library/parse": ["packages/library/src/parse/index.ts"],
+      "@rd/library/anchor": ["packages/library/src/anchor/index.ts"],
+      "@rd/library/render": ["packages/library/src/render/index.ts"]
+    }
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/src/**/*.tsx",
+    "packages/*/tests/**/*.ts",
+    "packages/*/tests/**/*.tsx",
+    "packages/*/vite.config.ts",
+    "packages/*/vitest.config.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts"
+  ],
+  "exclude": ["**/node_modules/**", "**/dist/**"]
+}

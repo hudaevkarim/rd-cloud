@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "jsx": "react-jsx",
+
+    /* Модули. Сервер собирается в Node и запускается как ESM, поэтому
+       module — NodeNext, и относительные импорты обязаны быть с расширением
+       `.js`. Web собирает Vite, ему Bundler попроще: разрешает `.js` на
+       TypeScript-исходники и не требует расширений. */
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Строгость. Настройки перенесены из проекта rd — они там были не
+       украшением: `noUncheckedIndexedAccess` заставил писать проверки на
+       каждый доступ к массиву, и именно на этом поймались ошибки в разборе
+       EPUB, где обращение к блоку главы может выйти за границу. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "useUnknownInCatchVariables": true,
+    "exactOptionalPropertyTypes": false,
+    "noEmit": true
+  }
+}
