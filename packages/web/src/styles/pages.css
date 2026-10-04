@@ -1,0 +1,66 @@
+/**
+ * Стили страниц: вход и заглушки.
+ */
+
+.page {
+  width: 100%;
+}
+
+.page--center {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: var(--gutter);
+}
+
+/* ─── Вход ─────────────────────────────────────────────────────────────────── */
+
+.login {
+  width: 100%;
+  max-width: 360px;
+}
+
+.login__title {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: var(--space-2);
+}
+
+.login .rule {
+  /* Стандартные 32px здесь слишком много: до формы полстраницы, а после
+     подзаголовка — половина оставшегося. */
+  margin: var(--space-6) 0 var(--space-8);
+}
+
+.login__theme {
+  display: block;
+  margin: var(--space-6) auto 0;
+  /* Кнопка-ссылка: подчёркивание появляется при наведении, как у ссылок. */
+  padding: var(--space-2);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.login__theme:hover {
+  color: var(--ink);
+}
+
+/* ─── Заглушки ─────────────────────────────────────────────────────────────── */
+
+.placeholder {
+  padding: var(--space-12) 0;
+  max-width: var(--measure);
+}
+
+.placeholder__title {
+  font-size: var(--text-title);
+  margin-bottom: var(--space-3);
+}
+
+.placeholder__hint {
+  color: var(--ink-2);
+  font-size: var(--text-ui-sm);
+}

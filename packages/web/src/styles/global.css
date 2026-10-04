@@ -1,0 +1,222 @@
+/**
+ * Базовые стили.
+ *
+ * Сброс сделан вручную, а не через Tailwind или сброс из библиотеки: на
+ * референсах стили пишутся напрямую, и лишний слой абстракции между разметкой и
+ * CSS означал бы, что снятые в DevTools значения перестают быть видны в коде.
+ */
+
+/* ─── Сброс ────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* ─── Основа ───────────────────────────────────────────────────────────────── */
+
+html {
+  /* Шрифты грузятся постепенно: без этого текст сначала показывается
+     системным, потом меняется, и при переходе на Lora колонка «прыгает» —
+     заметно, потому что ширина букв у них разная. */
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui);
+  line-height: var(--leading-ui);
+  letter-spacing: var(--track-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ─── Типографика ──────────────────────────────────────────────────────────── */
+
+h1,
+h2,
+h3 {
+  font-weight: 500;
+  letter-spacing: var(--track-title);
+  line-height: var(--leading-tight);
+}
+
+h1 {
+  font-size: var(--text-title);
+}
+
+h2 {
+  font-size: var(--text-title-sm);
+}
+
+/* Микро-лейбл: метаданные, подписи полей, состояния.
+   На seunghyuk измерено 11px / 16.5px / 500 / tracking 3.85px / uppercase. */
+.label {
+  font-family: var(--font-ui);
+  font-size: var(--text-label);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.label-xs {
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+/* Книжный текст. Lora — с засечками, и колонка ограничена `--measure`. */
+.book {
+  font-family: var(--font-book);
+  font-size: var(--text-book);
+  line-height: var(--leading-book);
+  letter-spacing: 0;
+  max-width: var(--measure);
+}
+
+@media (max-width: 767px) {
+  :root {
+    /* Поле 40px на телефоне съело бы четверть экрана. */
+    --gutter: 16px;
+    --text-book: 18px;
+  }
+}
+
+/* ─── Ссылки ───────────────────────────────────────────────────────────────── */
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:not([class]) {
+  /* Подчёркивание появляется при наведении, а не постоянно: постоянное
+     превращает список ссылок в полосу волнистых линий. */
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--transition);
+}
+
+a:not([class]):hover {
+  border-bottom-color: currentColor;
+}
+
+/* ─── Фокус ────────────────────────────────────────────────────────────────── */
+
+/* Видимый фокус. Убирать нельзя: без него навигация с клавиатуры невозможна.
+   Контур смещён, а не `outline: none`, чтобы он не съевал рамку поля ввода. */
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── Формы ────────────────────────────────────────────────────────────────── */
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  margin: 0;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* ─── Служебное ────────────────────────────────────────────────────────────── */
+
+/* Видно только с клавиатуры: переход по Tab должен показывать, где ты
+   находишься, но мышью этот элемент не виден. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Пропуск навигации: первая ссылка в табуляции, видимая при фокусе. */
+.skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--gutter);
+  z-index: 100;
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink);
+  color: var(--paper);
+  transform: translateY(-200%);
+}
+
+.skip:focus {
+  transform: translateY(0);
+}
+
+/* ─── Адаптив ──────────────────────────────────────────────────────────────── */
+
+/* На телефоне ничего не должно вылезать по горизонтали: строка в одну колонку
+   на 320px — базовый случай, а не исключение. */
+@media (max-width: 767px) {
+  body {
+    overflow-x: hidden;
+  }
+}

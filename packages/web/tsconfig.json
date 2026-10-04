@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.base.json",
+
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+
+    /* Браузерный код собирается Vite, а не `tsc`, поэтому разрешение модулей —
+       Bundler. С NodeNext пришлось бы писать `.js` в каждом относительном
+       импорте, и это раздражало бы куда сильнее, чем помогало. */
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+
+    "types": ["vite/client", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@rd/shared": ["../shared/src/index.ts"],
+      "@rd/shared/anchors": ["../shared/src/anchors.ts"],
+      "@rd/library/parse": ["../library/src/parse/index.ts"],
+      "@rd/library/anchor": ["../library/src/anchor/index.ts"],
+      "@rd/library/render": ["../library/src/render/index.ts"]
+    }
+  },
+
+  /* Конфиг нужен скрипту `build`: он делает `tsc --noEmit` перед `vite build`,
+     чтобы ошибка типов не доезжала до продакшена.
+     Корневой `tsconfig.json` тоже покрывает эти файлы — он остаётся общей
+     точкой проверки для всего монорепозитория и в CI, и локально. */
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "vite.config.ts", "vitest.config.ts", "vite.aliases.ts"],
+
+  "exclude": ["node_modules", "dist"]
+}

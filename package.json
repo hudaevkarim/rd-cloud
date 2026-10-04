@@ -16,8 +16,9 @@
                    ],
     "scripts":  {
                     "typecheck":  "tsc -p tsconfig.json --noEmit",
-                    "test":  "npm run test:lib \u0026\u0026 npm run test:server",
+                    "test":  "npm run test:lib \u0026\u0026 npm run test:web \u0026\u0026 npm run test:server",
                     "test:lib":  "vitest run",
+                    "test:web":  "npm run test --workspace @rd/web",
                     "test:watch":  "vitest",
                     "test:server":  "npm run test --workspace @rd/server",
                     "test:socket":  "npm run test:socket --workspace @rd/server",
@@ -27,12 +28,15 @@
                     "db:generate":  "npm run db:generate --workspace @rd/server",
                     "db:migrate":  "npm run db:migrate --workspace @rd/server",
                     "db:seed":  "npm run db:seed --workspace @rd/server",
-                    "dev":  "npm run dev --workspace @rd/server"
+                    "dev":  "npm run dev --workspace @rd/server",
+                    "dev:web":  "npm run dev --workspace @rd/web"
                 },
     "devDependencies":  {
                             "@types/node":  "^22.10.2",
                             "@vitest/coverage-v8":  "^3.2.4",
                             "jsdom":  "^26.0.0",
+                            "react":  "^18.3.1",
+                            "react-dom":  "^18.3.1",
                             "tsx":  "^4.19.2",
                             "typescript":  "5.9.3",
                             "vitest":  "^3.2.4"

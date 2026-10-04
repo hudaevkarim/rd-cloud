@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!--
+      `viewport` без `user-scalable=no` и без `maximum-scale`.
+      Запрет масштабирования ломает доступность: человек с плохим зрением
+      приближает текст, и страница не даёт. Плюс iOS Safari игнорирует запрет,
+      но ломает при этом `width=device-width`.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!-- Цвет панели браузера совпадает с фоном: иначе на android строка
+         состояния остаётся белой над тёмной страницей. Тему подставляет
+         ThemeProvider через свойство `colorScheme`. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+
+    <meta name="description" content="Совместное чтение книг и аудиокниг" />
+
+    <!--
+      Шрифты грузятся двумя способами сразу, и это осознанно.
+
+      Первый — `<link>` на Google Fonts. Он блокирует отрисовку, но текст
+      появляется сразу нужным шрифтом: без этого первая строка мигнула бы
+      системным шрифтом, а Lora и Space Grotesk отличаются по ширине букв, и
+      при подмене колонка «прыгала» бы на глазах.
+
+      Второй — `preconnect`: без него каждый из трёх запросов сначала шёл к
+      DNS, и на мобильном это добавляло сотни миллисекунд.
+
+      `display=swap` означает «показать запасной, пока грузится», а не «ждать».
+      Этот параметр вступает в противоречие с первым доводом, и потому здесь
+      `display=block`: текст не показывается до готовности шрифта, зато колонка
+      не прыгает. Ожидание ограничено двумя секундами, после которых шрифт
+      всё равно показывается запасным.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=Lora:ital,wght@0,400;0,500;1,400&family=Archivo+Black&display=block"
+    />
+
+    <title>Читай</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,332 @@
+/**
+ * Стили компонентов.
+ *
+ * Отдельным файлом от `global.css` потому, что здесь всё, что относится к
+ * конкретным элементам, а `global.css` — только сброс и типографика. Смешивать
+ * их в одном файле означало бы, что правила базового слоя и правила кнопок
+ * лежат рядом и правятся вместе, хотя правятся по разным поводам.
+ *
+ * Правила здесь — единственное место, где есть конкретные числа в пикселях.
+ * Всё, что можно выразить токеном, выражено токеном: иначе тема или отступы
+ * менялись бы в сотнях мест вместо одного.
+ */
+
+/* ─── Кнопка ───────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+
+  /* Ниже --touch нельзя: на телефоне это цель для пальца, а не украшение. */
+  min-height: var(--touch);
+  padding: var(--space-2) var(--space-4);
+
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  letter-spacing: var(--track-ui);
+  line-height: var(--leading-ui);
+
+  color: var(--ink);
+  background: transparent;
+  /* Рамка есть только у `default`. Всё, что не borderless, — осознанное
+     отступление от плоских кнопок референса: без рамки кнопка в списке
+     перестаёт отличаться от текста. */
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+
+  cursor: pointer;
+  transition: color var(--transition), background-color var(--transition),
+    border-color var(--transition);
+}
+
+.btn--full {
+  width: 100%;
+}
+
+.btn--ghost {
+  border-color: transparent;
+}
+
+.btn--danger {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Инверсия, а не смена оттенка: на тёмной теме акцент светлый, и подсветка им
+   дала бы текст, который темнее фона. */
+.btn:not(:disabled):hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn--danger:not(:disabled):hover {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+}
+
+.btn__icon {
+  display: inline-flex;
+  font-size: 1em;
+}
+
+/* ─── Поле ввода ───────────────────────────────────────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.field__label {
+  /* Трекинг 3.85px раздвигает буквы, из-за чего блок выглядит сдвинутым
+     вправо. Отрицательный отступ возвращает его к колонке. */
+  margin-left: -0.5px;
+}
+
+.field__input {
+  width: 100%;
+  min-height: var(--touch);
+  padding: var(--space-2) 0;
+
+  font-size: var(--text-ui);
+  color: var(--ink);
+
+  /* Только нижняя граница: см. шапку файла Input.tsx. */
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: transparent;
+
+  transition: border-color var(--transition);
+}
+
+.field__input::placeholder {
+  color: var(--ink-2);
+}
+
+.field__input:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
+}
+
+.field__input[aria-invalid='true'] {
+  border-bottom-color: var(--accent);
+}
+
+.field__hint {
+  margin: 0;
+}
+
+.field__error {
+  margin: 0;
+  color: var(--accent);
+}
+
+/* ─── Линия ────────────────────────────────────────────────────────────────── */
+
+.rule {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: var(--space-8) 0;
+}
+
+.rule--labelled {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  border-top: none;
+  margin: var(--space-8) 0;
+}
+
+.rule__line {
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.rule__label {
+  /* Раздвинутый трекинг снова требует поправки. */
+  margin-left: 0.5px;
+  margin-right: -0.5px;
+}
+
+/* ─── Спиннер ──────────────────────────────────────────────────────────────── */
+
+.spinner {
+  display: inline-block;
+  border: 1px solid var(--rule);
+  border-top-color: var(--ink);
+  border-radius: var(--radius);
+  animation: spinner-turn 700ms linear infinite;
+}
+
+@keyframes spinner-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ─── Модальное окно ───────────────────────────────────────────────────────── */
+
+.dialog-root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--gutter);
+}
+
+.dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  animation: fade-in var(--transition) both;
+}
+
+.dialog {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow: auto;
+
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+
+  animation: dialog-in var(--transition) both;
+}
+
+.dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--rule);
+}
+
+.dialog__title {
+  font-size: var(--text-ui);
+  letter-spacing: var(--track-ui);
+}
+
+.dialog__close {
+  min-width: 32px;
+  min-height: 32px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink-2);
+  transition: color var(--transition);
+}
+
+.dialog__close:hover {
+  color: var(--ink);
+}
+
+.dialog__body {
+  padding: var(--space-4);
+}
+
+.dialog__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ─── Уведомления ──────────────────────────────────────────────────────────── */
+
+.toasts {
+  position: fixed;
+  right: var(--gutter);
+  bottom: var(--gutter);
+  z-index: 60;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  /* На телефоне поднимаются над нижней навигацией: подсказка, уехавшая под
+     неё, не была бы видна вовсе. */
+  bottom: calc(var(--gutter) + var(--bottomnav-h));
+  left: var(--gutter);
+  align-items: stretch;
+}
+
+@media (min-width: 768px) {
+  .toasts {
+    left: auto;
+    bottom: var(--gutter);
+    align-items: flex-end;
+  }
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+
+  max-width: 420px;
+  padding: var(--space-3) var(--space-4);
+
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+
+  animation: toast-in var(--transition) both;
+}
+
+.toast--error {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toast__text {
+  font-size: var(--text-ui-sm);
+}
+
+.toast__close {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.6;
+}
+
+.toast__close:hover {
+  opacity: 1;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}

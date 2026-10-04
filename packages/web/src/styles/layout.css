@@ -1,0 +1,188 @@
+/**
+ * Стили каркаса: шапка, нижняя навигация, контейнер страницы.
+ */
+
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.layout__main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--measure-wide);
+  margin: 0 auto;
+  padding: var(--space-8) var(--gutter);
+}
+
+/* ─── Шапка ────────────────────────────────────────────────────────────────── */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+.topbar__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+
+  height: var(--topbar-h);
+  max-width: var(--measure-wide);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.topbar__logo {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+/* На телефоне логотип и навигация не влезают в одну строку. Логотип остаётся,
+   навигация переезжает вниз, а из действий остаётся только тема: «Выйти»
+   переносится в профиль, где ей и место. */
+.topbar__nav,
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.topbar__nav {
+  margin-right: auto;
+}
+
+.topbar__link {
+  position: relative;
+  padding: var(--space-2) 0;
+  font-size: var(--text-ui-sm);
+  letter-spacing: var(--track-ui);
+  color: var(--ink-2);
+  transition: color var(--transition);
+}
+
+.topbar__link:hover,
+.topbar__link.is-active {
+  color: var(--ink);
+}
+
+/* Подчёркивание активного пункта — единственный признак текущего раздела.
+   Цветом он не помечается: цветной активный пункт в монохромной схеме выглядит
+   как ошибка. */
+.topbar__link.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--accent);
+}
+
+.topbar__link--button {
+  cursor: pointer;
+}
+
+.topbar__theme {
+  min-width: var(--touch);
+  min-height: var(--touch);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--ink-2);
+  transition: color var(--transition);
+}
+
+.topbar__theme:hover {
+  color: var(--ink);
+}
+
+/* ─── Нижняя навигация ─────────────────────────────────────────────────────── */
+
+.bottomnav {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+
+  height: var(--bottomnav-h);
+  background: var(--paper);
+  border-top: 1px solid var(--rule);
+}
+
+.bottomnav__tab {
+  flex: 1;
+
+  /* --touch по высоте: каждый таб должен быть целью для пальца. */
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--ink-2);
+  transition: color var(--transition);
+}
+
+.bottomnav__tab.is-active {
+  color: var(--ink);
+  /* Акцентная верхняя черта вместо смены цвета: на 12px разница между
+     #6B6B6B и #111 различима, но полоса читается быстрее. */
+  box-shadow: inset 0 1px 0 var(--accent);
+}
+
+/* ─── Переключение по ширине ───────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .topbar__nav {
+    display: none;
+  }
+
+  .topbar__actions {
+    margin-left: auto;
+    gap: var(--space-2);
+  }
+
+  .topbar__link--button {
+    display: none;
+  }
+
+  .bottomnav {
+    display: flex;
+  }
+
+  .layout__main {
+    padding-top: var(--space-6);
+    /* Ровно высота навигации: иначе последний элемент уезжает под неё. */
+    padding-bottom: calc(var(--bottomnav-h) + var(--space-6));
+  }
+
+  .toasts {
+    /* На телефоне сообщения перекрывают навигацию: она всё равно не нужна,
+       пока висит уведомление. */
+    bottom: var(--gutter);
+  }
+}
+
+/* ─── Узкие экраны ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 359px) {
+  :root {
+    /* На 320px четыре слова в ряд не помещаются, и подписи начинают
+       переноситься на две строки — навигация растёт в высоту и наезжает на
+       содержимое. Уменьшаем трекинг и размер, а не число пунктов. */
+    --gutter: 12px;
+  }
+
+  .bottomnav__tab {
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+}
