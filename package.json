@@ -1,39 +1,40 @@
 {
-  "name": "rd-cloud",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "Централизованное веб-приложение для совместного чтения книг и аудиокниг",
-  "license": "MIT",
-  "engines": {
-    "node": ">=22.11 <23"
-  },
-  "workspaces": [
-    "packages/library",
-    "packages/shared",
-    "packages/server",
-    "packages/web"
-  ],
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run test:lib && npm run test:server",
-    "test:lib": "vitest run",
-    "test:watch": "vitest",
-    "test:server": "npm run test --workspace @rd/server",
-    "test:coverage": "vitest run --coverage",
-    "build": "npm run build --workspace @rd/library && npm run build --workspace @rd/shared && npm run build --workspace @rd/server",
-    "build:all": "npm run build --workspaces --if-present",
-    "db:generate": "npm run db:generate --workspace @rd/server",
-  "db:migrate": "npm run db:migrate --workspace @rd/server",
-    "db:seed": "npm run db:seed --workspace @rd/server",
-    "dev": "npm run dev --workspace @rd/server"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.2",
-    "@vitest/coverage-v8": "^3.2.4",
-    "jsdom": "^26.0.0",
-    "tsx": "^4.19.2",
-    "typescript": "5.9.3",
-    "vitest": "^3.2.4"
-  }
+    "name":  "rd-cloud",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "description":  "Централизованное веб-приложение для совместного чтения книг и аудиокниг",
+    "license":  "MIT",
+    "engines":  {
+                    "node":  "\u003e=22.11 \u003c23"
+                },
+    "workspaces":  [
+                       "packages/library",
+                       "packages/shared",
+                       "packages/server",
+                       "packages/web"
+                   ],
+    "scripts":  {
+                    "typecheck":  "tsc -p tsconfig.json --noEmit",
+                    "test":  "npm run test:lib \u0026\u0026 npm run test:server",
+                    "test:lib":  "vitest run",
+                    "test:watch":  "vitest",
+                    "test:server":  "npm run test --workspace @rd/server",
+                    "test:socket":  "npm run test:socket --workspace @rd/server",
+                    "test:coverage":  "vitest run --coverage",
+                    "build":  "npm run build --workspace @rd/library \u0026\u0026 npm run build --workspace @rd/shared \u0026\u0026 npm run build --workspace @rd/server",
+                    "build:all":  "npm run build --workspaces --if-present",
+                    "db:generate":  "npm run db:generate --workspace @rd/server",
+                    "db:migrate":  "npm run db:migrate --workspace @rd/server",
+                    "db:seed":  "npm run db:seed --workspace @rd/server",
+                    "dev":  "npm run dev --workspace @rd/server"
+                },
+    "devDependencies":  {
+                            "@types/node":  "^22.10.2",
+                            "@vitest/coverage-v8":  "^3.2.4",
+                            "jsdom":  "^26.0.0",
+                            "tsx":  "^4.19.2",
+                            "typescript":  "5.9.3",
+                            "vitest":  "^3.2.4"
+                        }
 }

@@ -2,6 +2,8 @@ import { env } from './env.js';
 import { logger } from './lib/logger.js';
 import { buildServer } from './app.js';
 import { connectDatabase, disconnectDatabase } from './db/client.js';
+import { createSocketServer, closeSocketServer } from './ws/io.js';
+import { debugIo } from './ws/broadcast.js';
 
 /**
  * Точка входа сервера.
@@ -20,7 +22,12 @@ async function main(): Promise<void> {
   await connectDatabase();
 
   const address = await app.listen({ host: env.HOST, port: env.PORT });
-  logger.info({ address, env: env.NODE_ENV }, 'сервер запущен');
+
+  // Сокеты цепляются к уже слушающему серверу. Отдельный порт не нужен:
+  // `engine.io` отдаёт запросы не-сокетов прежним слушателям, поэтому Fastify
+  // продолжает обслуживать API и раздачу файлов без правок.
+  const io = await createSocketServer(app.server);
+  logger.info({ address, env: env.NODE_ENV, io: debugIo() }, 'сервер запущен');
 
   // ─── Корректное завершение ─────────────────────────────────────────────────
   let closing = false;
@@ -39,6 +46,9 @@ async function main(): Promise<void> {
     timer.unref();
 
     try {
+      // Сокеты закрываются первыми: у них свои таймеры, и `engine.io` не дал бы
+      // процессу завершиться. `app.close()` останавливает HTTP-сервер.
+      await closeSocketServer(io);
       await app.close();
       await disconnectDatabase();
       clearTimeout(timer);

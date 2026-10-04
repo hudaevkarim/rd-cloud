@@ -188,6 +188,12 @@ model Comment {
   reactions Reaction[]
 
   @@index([roomId, bookId, anchorType])
+  // Под курсорную пагинацию списка комментариев: выборка идёт по
+  // `(roomId, bookId)` с отсечкой по `(createdAt, id)`. Без этого индекса
+  // Postgres сортировал бы всю выборку комнаты, прежде чем отбросить лишнее,
+  // и каждая страница стоила бы тем дороже, чем больше комментариев в комнате.
+  // `id` в конце нужен для сравнения пары: метки `createdAt` не уникальны.
+  @@index([roomId, bookId, createdAt, id])
   @@index([userId])
   @@index([parentId])
 }

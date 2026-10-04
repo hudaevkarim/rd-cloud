@@ -1,0 +1,105 @@
+import type { Prisma } from '../generated/prisma/client.js';
+import { prisma } from '../db/client.js';
+
+/**
+ * Уведомления.
+ *
+ * ─── Зачем задел, а не полная реализация ─────────────────────────────────────
+ *
+ * Подэтап 6.1 добавляет поводы для уведомления (ответ, реакция), но не
+ * эндпоинты чтения: без них историю не посмотреть, а сокет ещё не подключён.
+ * Поэтому здесь только запись в базу плюс крючок для эмита.
+ *
+ * Порядок именно такой: сначала запись, потом эмит. Если запись не удалась,
+ * уведомления нет ни в базе, ни на экране. Обратный порядок дал бы всплывашку
+ * в интерфейсе, которая исчезла бы после перезагрузки страницы, — худший вид
+ * уведомления.
+ */
+
+export const NOTIFICATION_TYPES = [
+  'join_request',
+  'join_approved',
+  'new_book',
+  'reaction',
+  'reply',
+] as const;
+
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export interface NotifyInput {
+  type: NotificationType;
+  payload: Prisma.InputJsonValue;
+}
+
+/**
+ * Крючок эмита. Заполняется подсистемой сокетов.
+ *
+ * Не импортируем `socket.io` здесь напрямую: иначе `notify` тянул бы сервер
+ * сокетов даже там, где сокетов нет, и маршруты комментариев стали бы
+ * зависеть от либы, которой они не касаются.
+ * Эмит получает **созданную запись**, а не входные данные. Идентификатор и
+ * метка времени известны только после вставки; вариант «создать, потом
+ * перечитать последнюю» прочитал бы чужую запись, если бы между этими
+ * действиями кто-то создал ещё одну.
+ */
+type Emitter = (row: StoredNotification) => void;
+
+/** Запись, попадающая в эмит: ровно то, что лежит в базе. */
+export interface StoredNotification {
+  id: string;
+  userId: string;
+  // Строка, а не набор: значение достаётся из колонки, а колонка объявлена
+  // строкой. Сужается оно там, где тип интерпретируется, — здесь это лишняя
+  // работа, потому что эмит всё равно отдаёт значение как есть.
+  type: string;
+  // `JsonValue`, а не `InputJsonValue`: это значение, прочитанное из базы, и
+  // `JsonValue` допускает `null`, который тип записи не допускает.
+  payload: Prisma.JsonValue;
+  createdAt: Date;
+}
+
+let emitter: Emitter | null = null;
+
+export function setNotificationEmitter(fn: Emitter | null): void {
+  emitter = fn;
+}
+
+/**
+ * Создать уведомление.
+ *
+ * Ошибка не поднимается: уведомление — побочный эффект, и неудача записи в
+ * него не должна отменять действие, которое его вызвало. Комментарий, на
+ * который не пришло уведомление, всё равно создан, и пользователь увидит его
+ * в ленте.
+ */
+export async function notify(userId: string, input: NotifyInput): Promise<void> {
+  try {
+    const row = await prisma.notification.create({
+      data: { userId, type: input.type, payload: input.payload },
+      select: { id: true, userId: true, type: true, payload: true, createdAt: true },
+    });
+    emitter?.(row);
+  } catch {
+    // Тишина здесь осознанная. Вызывающий не должен ломаться из-за того, что
+    // колокольчик не сработал; при этом диагностировать полезно, поэтому при
+    // желании сюда добавляется лог по уровню.
+  }
+}
+
+/**
+ * Уведомить нескольких, исключив отправителя.
+ *
+ * Отправителя исключаем всегда: человек не должен получать уведомление о том,
+ * что сделал сам. Список собирается заранее и один раз фильтруется, потому
+ * что в комнате обычно три человека, а уведомление каждому — отдельный
+ * запрос.
+ */
+export async function notifyMany(
+  userIds: readonly string[],
+  input: NotifyInput,
+  exceptUserId?: string,
+): Promise<void> {
+  const targets = [...new Set(userIds)].filter((id) => id !== exceptUserId);
+  if (targets.length === 0) return;
+  await Promise.all(targets.map((id) => notify(id, input)));
+}

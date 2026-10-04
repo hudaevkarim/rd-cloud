@@ -13,6 +13,7 @@ import { authRoutes } from './routes/auth.js';
 import { adminRoutes } from './routes/admin.js';
 import { roomRoutes } from './routes/rooms.js';
 import { bookRoutes } from './routes/books.js';
+import { commentRoutes } from './routes/comments.js';
 import { registerDataFiles } from './plugins/data-files.js';
 
 /**
@@ -175,6 +176,7 @@ export async function buildServer(): Promise<App> {
   await app.register(adminRoutes, { prefix: '/api/admin' });
   await app.register(roomRoutes, { prefix: '/api/rooms' });
   await app.register(bookRoutes, { prefix: '/api' });
+  await app.register(commentRoutes, { prefix: '/api' });
 
   await registerDataFiles(app);
 
