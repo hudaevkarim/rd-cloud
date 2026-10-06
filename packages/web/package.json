@@ -7,7 +7,8 @@
   "description": "Клиент: React, Vite, адаптивная вёрстка от 320px до 4K, PWA.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build": "tsc -p tsconfig.json --noEmit && vite build && node scripts/check-no-dev-in-dist.mjs",
+    "check:dist": "node scripts/check-no-dev-in-dist.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },

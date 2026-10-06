@@ -5,6 +5,9 @@ import { AppError } from '../lib/errors.js';
 import { requireAuth, currentUser } from '../auth/guards.js';
 import { generateInviteCode, normalizeInviteCode } from '../lib/invite-code.js';
 import { memberRole, MEMBERS_BY_JOINING } from '../rooms/membership.js';
+import { notify, notifyMany } from '../lib/notify.js';
+import { clearPresence } from '../ws/presence.js';
+import { presenceLeft } from '../ws/broadcast.js';
 
 /**
  * Комнаты.
@@ -41,6 +44,7 @@ const searchQuery = z.object({ q: z.string().trim().min(1, 'Пустой зап�
 const codeBody = z.object({ inviteCode: z.string().trim().min(1, 'Укажите код').max(32) });
 const inviteBody = z.object({ userId: z.string().min(1) });
 const requestParams = z.object({ id: z.string().min(1), requestId: z.string().min(1) });
+const memberParams = z.object({ id: z.string().min(1), userId: z.string().min(1) });
 
 /** Поля комнаты в ответе. `inviteCode` — только для участников. */
 const roomSelect = {
@@ -123,11 +127,24 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
    * уедут в паттерн и превратят «точное совпадение» в «совпадение с чем угодно».
    * Экранируем.
    *
-   * Показываем только имя и число участников: `inviteCode` в поиске не нужен
-   * (код выдают отдельно) и показывать его каждому, кто знает подстроку имени,
-   * незачем.
+   * ─── Почему в ответе `myRole` и `myPendingRequest` ─────────────────────────
+   *
+   * Без них кнопка «Попроситься» не знает, что показать. Человек, который уже
+   * участник, увидел бы «Попроситься» и получил 409; человек с висящей заявкой
+   * — ту же кнопку и тот же 409. Оба состояния означают «здесь делать нечего».
+   *
+   * Считать их на клиенте нельзя: это потребовало бы запроса на каждую
+   * комнату в выдаче, то есть до пятидесяти запросов на один ввод в поиск.
+   *
+   * `inviteCode` по-прежнему не отдаётся: код выдают отдельно и по ссылке, а
+   * показывать его каждому, кто знает подстроку имени, незачем.
+   *
+   * Роль и заявка берутся вложенными выборками по текущему пользователю: один
+   * запрос вместо трёх на комнату. Заявка фильтруется по `pending`, иначе
+   * отклонённая заявка годами назад показывалась бы как «запрос отправлен».
    */
   app.get('/search', async (request) => {
+    const me = currentUser(request);
     searchQuery.parse(request.query);
 
     const q = (request.query as { q: string }).q;
@@ -136,12 +153,36 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
         isPublic: true,
         name: { contains: q, mode: 'insensitive' },
       },
-      select: { id: true, name: true, description: true, _count: { select: { members: true } } },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        _count: { select: { members: true } },
+        owner: { select: { id: true, displayName: true } },
+        members: {
+          where: { userId: me.id },
+          select: { role: true },
+        },
+        joinRequests: {
+          where: { userId: me.id, status: 'pending' },
+          select: { id: true },
+          take: 1,
+        },
+      },
       orderBy: { members: { _count: 'desc' } },
       take: 50,
     });
 
-    return { rooms };
+    return {
+      rooms: rooms.map(({ members, joinRequests, owner, _count, ...room }) => ({
+        ...room,
+        memberCount: _count.members,
+        owner,
+        myRole: members[0]?.role ?? null,
+        // Флаг, а не объект: клиенту достаточно знать, что заявка висит.
+        myPendingRequest: joinRequests.length > 0,
+      })),
+    };
   });
 
   // ─── Вход по коду и приглашение ────────────────────────────────────────────
@@ -176,7 +217,14 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(200).send({ roomId: room.id, joined: true });
   });
 
-  /** Приглашение участником: тоже сразу, без заявки. */
+  /**
+   * Приглашение участником: тоже сразу, без заявки.
+   *
+   * Приглашённый узнаёт, что он в комнате. Без этого его следующий запрос вернул
+   * бы 403, и человек решил бы, что ссылка не сработала. Название отдаём в
+   * уведомлении: «Вас добавили в комнату» без названия заставило бы идти и
+   * выяснять, в какую именно.
+   */
   app.post('/:id/invite', async (request, reply) => {
     const me = currentUser(request);
     const { id } = idParams.parse(request.params);
@@ -196,6 +244,16 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
     if (existing !== null) return reply.code(200).send({ joined: false });
 
     await prisma.roomMember.create({ data: { roomId: id, userId: body.userId, role: 'member' } });
+
+    const room = await prisma.room.findUniqueOrThrow({
+      where: { id },
+      select: { name: true },
+    });
+    await notify(body.userId, {
+      type: 'added',
+      payload: { roomId: id, roomName: room.name },
+    });
+
     return reply.code(201).send({ joined: true });
   });
 
@@ -209,6 +267,15 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
       throw AppError.conflict('Вы уже в комнате');
     }
 
+    // Комната читается здесь, а не только её роль: из неё же берутся название
+    // для уведомления и идентификаторы участников для рассылки. Заодно снимается
+    // гонка — комната могла быть удалена между проверкой роли и вставкой, и тогда
+    // `findUnique` вернёт `null`: честный 404 вместо 500 на внешнем ключе.
+    const room = await prisma.room.findUnique({
+      where: { id },
+      select: { id: true, name: true, members: { select: { userId: true } } },
+    });
+    if (room === null) throw AppError.notFound('Комната');
     // Одна заявка от человека на комнату: схема запрещает дубли по
     // (roomId, userId, status), и повторная отправка должна давать понятный
     // ответ, а не ошибку уникальности из глубины Prisma.
@@ -222,6 +289,27 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
       data: { roomId: id, userId: me.id, status: 'pending' },
       select: { id: true, createdAt: true, status: true },
     });
+
+    // Уведомление уходит после вставки, а не до: обратный порядок дал бы тост
+    // о заявке, которая не сохранилась — человек увидел бы «новая заявка»,
+    // обновил вкладку и не нашёл её.
+    //
+    // Получают все участники комнаты, включая владельца: одобрять заявки может
+    // любой участник, и потому узнать о новой должен любой. Заявитель
+    // уведомление не получает — он и так знает, что подал.
+    await notifyMany(
+      room.members.map((m) => m.userId),
+      {
+        type: 'join_request',
+        payload: {
+          roomId: room.id,
+          roomName: room.name,
+          userId: me.id,
+          userName: me.displayName,
+        },
+      },
+      me.id,
+    );
 
     return reply.code(201).send({ request: request_ });
   });
@@ -254,6 +342,8 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
     const me = currentUser(request);
     const { id, requestId } = requestParams.parse(request.params);
 
+    // Одобряет любой участник, а не только владелец: в комнате все равны, и
+    // ждать владельца, который может не заходить неделями, нельзя.
     if ((await memberRole(prisma, id, me.id)) === null) {
       throw AppError.forbidden('Одобрять заявки может только участник комнаты');
     }
@@ -277,9 +367,25 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
       data: { status: 'approved', decidedAt: new Date(), decidedById: me.id },
     });
 
+    // Принятому отвечаем. Без этого человек подал заявку, ушёл и вернулся по
+    // F5 — и увидел бы «Запрос отправлен» навсегда, пока не обновит вручную.
+    // Название комнаты — чтобы тост был понятен без перехода.
+    const room = await prisma.room.findUnique({ where: { id }, select: { name: true } });
+    await notify(pending.userId, {
+      type: 'join_approved',
+      payload: { roomId: id, roomName: room?.name ?? '' },
+    });
+
     return reply.code(201).send({ ok: true });
   });
 
+  /**
+   * Отклонение.
+   *
+   * Заявителю тоже отвечаем. Молчание выглядело бы как потеря заявки: человек
+   * обновлял бы вкладку и не понимал, что её отклонили, — а потом подал бы
+   * заявку заново и получил бы 409 «уже отправлена».
+   */
   app.post('/:id/join-requests/:requestId/reject', async (request) => {
     const me = currentUser(request);
     const { id, requestId } = requestParams.parse(request.params);
@@ -290,13 +396,19 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
 
     const pending = await prisma.joinRequest.findFirst({
       where: { id: requestId, roomId: id, status: 'pending' },
-      select: { id: true },
+      select: { id: true, userId: true },
     });
     if (pending === null) throw AppError.notFound('Заявка');
 
     await prisma.joinRequest.update({
       where: { id: pending.id },
       data: { status: 'rejected', decidedAt: new Date(), decidedById: me.id },
+    });
+
+    const room = await prisma.room.findUnique({ where: { id }, select: { name: true } });
+    await notify(pending.userId, {
+      type: 'join_rejected',
+      payload: { roomId: id, roomName: room?.name ?? '' },
     });
 
     return { ok: true };
@@ -349,6 +461,77 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return { members };
+  });
+
+  /**
+   * Исключение участника.
+   *
+   * Только владелец. Три правила, каждое с причиной:
+   *
+   *   1. Себя удалить нельзя — для этого есть `POST /:id/leave`, который вдобавок
+   *      передаёт владение следующему участнику. Исключение себя было бы
+   *      «уйти, но остаться владельцем в трупе».
+   *
+   *   2. Владельца удалить нельзя, пока он им является. Владение передаётся
+   *      добровольно уходом; молчаливая передача при кике означала бы, что
+   *      исключённый вдруг становится хозяином.
+   *
+   *   3. Несуществующий участник — 404, а не 200. Идемпотентность здесь вводит
+   *      в заблуждение: повторный клик по «Исключить» выглядел бы как успех,
+   *      хотя человек ушёл не из-за этого клика.
+   *
+   * Присутствие снимается явно. Иначе исключённый остался бы в списке «кто
+   * читает» до следующего `presence:update`, который сервер при его изгнании
+   * не шлёт, а обрыва сокета может не произойти несколько минут.
+   */
+  app.delete('/:id/members/:userId', async (request) => {
+    const me = currentUser(request);
+    const { id, userId } = memberParams.parse(request.params);
+
+    const room = await prisma.room.findUnique({
+      where: { id },
+      select: { id: true, name: true, ownerId: true },
+    });
+    if (room === null) throw AppError.notFound('Комната');
+
+    // Владелец определяется по колонке `ownerId`, а не по роли в `RoomMember`:
+    // исключение меняет состав, и полагаться на роль значило бы проверять
+    // самого себя по той же записи, которую собираешься удалить.
+    if (room.ownerId !== me.id) {
+      throw AppError.forbidden('Исключать может только владелец комнаты');
+    }
+
+    if (userId === me.id) {
+      throw AppError.badRequest('Владелец не может исключить себя — используйте «Покинуть»');
+    }
+
+    const target = await prisma.roomMember.findUnique({
+      where: { roomId_userId: { roomId: id, userId } },
+      select: { id: true, role: true },
+    });
+    if (target === null) throw AppError.notFound('Участник');
+    if (target.role === 'owner') {
+      throw AppError.badRequest('Нельзя исключить владельца комнаты');
+    }
+
+    await prisma.roomMember.delete({ where: { id: target.id } });
+
+    // Снимаем присутствие в этой комнате и объявляем остальным, что человека
+    // больше нет. Порядок важен: сначала убираем из карты, потом объявляем —
+    // иначе получатель мог бы увидеть `presence:left` раньше, чем сам сокет
+    // исключённого перестал бы считаться в комнате.
+    const cleared = clearPresence(userId, id);
+    if (cleared !== null) presenceLeft(id, userId);
+
+    // Исключённый узнаёт об этом сам. Без уведомления его следующий запрос к
+    // комнате вернул бы 403 без внятной причины — выглядело бы как поломка
+    // доступа, а не как решение хозяина.
+    await notify(userId, {
+      type: 'kicked',
+      payload: { roomId: id, roomName: room.name },
+    });
+
+    return { ok: true };
   });
 
   /** Правка — только владельцу. */

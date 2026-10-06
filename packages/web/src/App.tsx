@@ -1,8 +1,8 @@
+import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { Layout } from './components/layout/Layout.js';
 import { RequireAdmin, RequireAuth } from './components/RequireAuth.js';
 import { LoginPage } from './pages/Login.js';
-import { ShowcasePage } from './dev/ShowcasePage.js';
 import {
   AdminPage,
   CatalogPage,
@@ -12,6 +12,27 @@ import {
   RoomPage,
   SearchPage,
 } from './pages/Placeholders.js';
+
+/**
+ * Витрина компонентов грузится отдельно и только в разработке.
+ *
+ * ─── Почему не просто `import.meta.env.DEV && <Route/>` ──────────────────────
+ *
+ * Статический импорт попал бы в бандл независимо от условия: модуль уже
+ * загружен, а условие лишь решает, рисовать его или нет. Проверено на этой
+ * странице — до правки поиск по `dist` находил и код витрины, и её стили.
+ *
+ * Динамический `import()` внутри условия выбрасывается сборщиком вместе с
+ * отдельным куском: в продакшене `import.meta.env.DEV` — это `false`,
+ * выражение `false ? … : null` сворачивается, и ссылка на модуль исчезает
+ * вместе с ним.
+ *
+ * Гарантия проверяется не на слово, а поиском по `dist` — см.
+ * `scripts/check-no-dev-in-dist.mjs`, который идёт в CI сразу после сборки.
+ */
+const ShowcasePage = import.meta.env.DEV
+  ? lazy(() => import('./dev/ShowcasePage.js').then((m) => ({ default: m.ShowcasePage })))
+  : null;
 
 /**
  * Маршруты.
@@ -38,8 +59,20 @@ export function App() {
         нижняя навигация мешали бы разглядывать компоненты. Вне `RequireAuth`:
         страница нужна, когда сессии ещё нет, — ровно в момент, когда
         разрабатывают форму входа.
+
+        Условие `ShowcasePage !== null`, а не само `DEV`: в продакшене здесь
+        `false`, и ветка вместе с ленивым импортом исчезает из бандла.
       */}
-      <Route path="/dev/components" element={<ShowcasePage />} />
+      {ShowcasePage !== null && (
+        <Route
+          path="/dev/components"
+          element={
+            <Suspense fallback={null}>
+              <ShowcasePage />
+            </Suspense>
+          }
+        />
+      )}
 
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>

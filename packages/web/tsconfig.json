@@ -26,6 +26,12 @@
      чтобы ошибка типов не доезжала до продакшена.
      Корневой `tsconfig.json` тоже покрывает эти файлы — он остаётся общей
      точкой проверки для всего монорепозитория и в CI, и локально. */
+  /* `vite/client` даёт тип `import.meta.env`, в том числе `DEV`.
+     Он в списке `types` ниже, но список `types` не подхватывается для
+     включённых файлов сам по себе — нужен явный `/// <reference types=…>` в
+     том файле, где используется. Проверено: без этой строки `import.meta.env`
+     не находится, и `tsc --noEmit` падает с TS2339. */
+  "files": ["src/vite-env.d.ts"],
   "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "vite.config.ts", "vitest.config.ts", "vite.aliases.ts"],
 
   "exclude": ["node_modules", "dist"]

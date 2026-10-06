@@ -239,6 +239,90 @@ describe('поиск публичных комнат', () => {
     const response = await app.inject({ method: 'GET', url: '/api/rooms/search?q=кто' });
     expect(response.statusCode).toBe(401);
   });
+
+  it('отдаёт владельца, число участников и мою роль', async () => {
+    const owner = await createTestUser({ displayName: 'Хозяин' });
+    const member = await createTestUser();
+    const stranger = await createTestUser();
+    const { roomId } = await createTestRoom({
+      ownerId: owner.user.id,
+      memberIds: [member.user.id],
+      name: 'Анна Каренина',
+      isPublic: true,
+    });
+
+    const mine = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/search?q=${encodeURIComponent('анна')}`,
+      headers: auth(member.token),
+    });
+    const myHit = mine.json().rooms[0];
+    expect(myHit.myRole).toBe('member');
+    expect(myHit.memberCount).toBe(2);
+    expect(myHit.owner).toMatchObject({ id: owner.user.id, displayName: 'Хозяин' });
+
+    // Постороннему роль не выдаётся, но она и `null`, а не отсутствует: клиент
+    // различает «не участник» по ключу, и отсутствующий ключ означал бы, что
+    // поле забыли.
+    const theirs = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/search?q=${encodeURIComponent('анна')}`,
+      headers: auth(stranger.token),
+    });
+    const theirHit = theirs.json().rooms[0];
+    expect(theirHit.myRole).toBeNull();
+    expect('myRole' in theirHit).toBe(true);
+    expect(theirHit.myPendingRequest).toBe(false);
+    expect(roomId).toBeTruthy();
+  });
+
+  it('показывает myPendingRequest только для своей заявки на этой комнате', async () => {
+    const owner = await createTestUser();
+    const mine = await createTestUser();
+    const theirs = await createTestUser();
+    const { roomId } = await createTestRoom({
+      ownerId: owner.user.id,
+      name: 'Анна Каренина',
+      isPublic: true,
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join-request`,
+      headers: auth(mine.token),
+    });
+
+    const mineSearch = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/search?q=${encodeURIComponent('анна')}`,
+      headers: auth(mine.token),
+    });
+    expect(mineSearch.json().rooms[0].myPendingRequest).toBe(true);
+
+    // Чужая заявка не должна светиться в чужих глазах.
+    const theirsSearch = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/search?q=${encodeURIComponent('анна')}`,
+      headers: auth(theirs.token),
+    });
+    expect(theirsSearch.json().rooms[0].myPendingRequest).toBe(false);
+  });
+
+  it('выдаёт один _count-счёт участников, а не вложенный объект', async () => {
+    const owner = await createTestUser();
+    await createTestRoom({ ownerId: owner.user.id, name: 'Анна Каренина', isPublic: true });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/search?q=${encodeURIComponent('анна')}`,
+      headers: auth(owner.token),
+    });
+    const hit = response.json().rooms[0];
+
+    // Форма ответа объявлена контрактом: клиент читает `memberCount`. Оставшийся
+    // `_count` означал бы, что форма поменялась, а типы в клиенте — нет.
+    expect(hit.memberCount).toBe(1);
+    expect(hit._count).toBeUndefined();
+  });
 });
 
 describe('заявки на вступление', () => {

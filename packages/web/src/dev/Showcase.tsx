@@ -4,6 +4,15 @@ import { useToast } from '../components/ui/Toast.js';
 import { Dialog } from '../components/ui/Dialog.js';
 import { Label } from '../components/ui/Label.js';
 
+/*
+  Стили витрины подключаются здесь, а не в `main.tsx`.
+
+  Подключение в точке входа отражалось бы в общем CSS-бандле при любом режиме
+  сборки, и витрина оставалась бы в продакшене даже при вырезанном коде. Здесь
+  файл попадает в кусок самой витрины и уходит вместе с ним.
+*/
+import '../styles/showcase.css';
+
 /**
  * Витрина компонентов и токенов.
  *
