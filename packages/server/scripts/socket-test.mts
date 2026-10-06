@@ -3,6 +3,7 @@
 import './use-test-db.mts';
 
 import { randomUUID } from 'node:crypto';
+import { crc32 } from 'node:zlib';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import { buildServer } from '../src/app.js';
 import { connectDatabase, disconnectDatabase, prisma } from '../src/db/client.js';
@@ -131,6 +132,172 @@ async function connect(
   });
 
   return result.ok ? { socket, error: null } : { socket: null, error: result.error };
+}
+
+/* ─── Загрузка файлов для проверки ────────────────────────────────────────── */
+
+/**
+ * Минимальный EPUB.
+ *
+ * Собирается прямо здесь, а не читается фикстурой: скрипт сокетов запускается
+ * отдельно от `books.test.ts`, и его собственная фикстура не зависит ни от
+ * порядка тестов, ни от того, что другой файл тестов уже собрал каталог.
+ *
+ * Реальный EPUB нужен потому, что сервер разбирает его при загрузке: подсунуть
+ * zip с мусором значило бы проверять не тот путь, которым идёт живой человек.
+ */
+function buildEpub(): Buffer {
+  const files = new Map<string, Buffer>();
+  const put = (name: string, text: string): void => {
+    files.set(name, Buffer.from(text, 'utf8'));
+  };
+
+  // `mimetype` обязан быть первым и несжатым — этого требует спецификация.
+  files.set('mimetype', Buffer.from('application/epub+zip', 'utf8'));
+  put(
+    'META-INF/container.xml',
+    `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`,
+  );
+  put(
+    'OEBPS/content.opf',
+    `<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Проверка сокетов</dc:title>
+    <dc:creator>Тестовый Автор</dc:creator>
+    <dc:language>ru</dc:language>
+  </metadata>
+  <manifest>
+    <item id="c1" href="ch1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="c1"/></spine>
+</package>`,
+  );
+  put(
+    'OEBPS/ch1.xhtml',
+    `<?xml version="1.0" encoding="utf-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Глава</title></head>
+<body><h1>Глава</h1><p>Ветер гулял по пустым улицам и не хотел останавливаться.</p></body></html>`,
+  );
+
+  return zipSync(files);
+}
+
+/** Сборка zip без сжатия: структура EPUB должна оставаться читаемой. */
+function zipSync(files: Map<string, Buffer>): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+
+  for (const [name, content] of files) {
+    const nameBytes = Buffer.from(name, 'utf8');
+    const crc = crc32(content) >>> 0;
+    const size = content.length;
+
+    const local = Buffer.alloc(30 + nameBytes.length);
+    const lv = local;
+    lv.writeUInt32LE(0x04034b50, 0);
+    lv.writeUInt16LE(20, 4);
+    lv.writeUInt16LE(0, 6); // флаги
+    lv.writeUInt16LE(0, 8); // метод: без сжатия
+    lv.writeUInt32LE(crc, 14);
+    lv.writeUInt32LE(size, 18);
+    lv.writeUInt32LE(size, 22);
+    lv.writeUInt16LE(nameBytes.length, 26);
+    nameBytes.copy(local, 30);
+
+    const cd = Buffer.alloc(46 + nameBytes.length);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt32LE(crc, 16);
+    cd.writeUInt32LE(size, 20);
+    cd.writeUInt32LE(size, 24);
+    cd.writeUInt16LE(nameBytes.length, 28);
+    cd.writeUInt32LE(offset, 42);
+    nameBytes.copy(cd, 46);
+
+    locals.push(local, content);
+    centrals.push(cd);
+    offset += local.length + size;
+  }
+
+  const centralSize = centrals.reduce((n, c) => n + c.length, 0);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(files.size, 8);
+  end.writeUInt16LE(files.size, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(offset, 16);
+
+  return Buffer.concat([...locals, ...centrals, end]);
+}
+
+const EPUB_BYTES = buildEpub();
+
+/** Часть multipart с полем. */
+function fieldPart(boundary: string, name: string, value: string): Buffer {
+  return Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+    'utf8',
+  );
+}
+
+/** Часть multipart с файлом: имя файла обязательно, иначе сервер его не увидит. */
+function filePart(boundary: string, field: string, filename: string, bytes: Buffer): Buffer {
+  const head = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${filename}"\r\n` +
+      'Content-Type: application/octet-stream\r\n\r\n',
+    'utf8',
+  );
+  return Buffer.concat([head, bytes, Buffer.from('\r\n', 'utf8')]);
+}
+
+/**
+ * Загрузка в комнату.
+ *
+ * Поля идут раньше файла: от `kind` и `format` зависит лимит размера, и сервер
+ * обязан знать его до первого байта. Этот порядок — часть контракта, а не
+ * особенность сборки.
+ */
+async function uploadToRoom(token: string, roomId: string): Promise<Response> {
+  const boundary = `----rdsock${randomUUID().replace(/-/g, '')}`;
+  return fetch(`${BASE}/api/rooms/${roomId}/books/upload`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+    },
+    body: Buffer.concat([
+      fieldPart(boundary, 'kind', 'text'),
+      fieldPart(boundary, 'format', 'epub'),
+      fieldPart(boundary, 'title', 'Проверка сокетов'),
+      fieldPart(boundary, 'author', 'Тестовый Автор'),
+      filePart(boundary, 'file', 'test-book.epub', EPUB_BYTES),
+      Buffer.from(`--${boundary}--\r\n`, 'utf8'),
+    ]),
+  });
+}
+
+/** Загрузка в каталог: вид файла несёт имя поля, порядок частей не важен. */
+async function uploadToCatalog(token: string): Promise<Response> {
+  const boundary = `----rdcat${randomUUID().replace(/-/g, '')}`;
+  return fetch(`${BASE}/api/admin/catalog`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+    },
+    body: Buffer.concat([
+      fieldPart(boundary, 'title', 'Книга в каталоге'),
+      fieldPart(boundary, 'author', 'Тестовый Автор'),
+      filePart(boundary, 'text', 'test-book.epub', EPUB_BYTES),
+      Buffer.from(`--${boundary}--\r\n`, 'utf8'),
+    ]),
+  });
 }
 
 async function main(): Promise<void> {
@@ -436,6 +603,133 @@ async function main(): Promise<void> {
     );
 
     check('автор ответа не уведомлён о себе', (await bobSeesOwnReply) === null);
+
+    // ─── 7. Книги в комнате ────────────────────────────────────────────────────
+    section('7. События книг');
+
+    // Кэрол вне комнаты: её сокет не подписан на комнатный канал. Без проверки
+    // «постороннему не ушло» утверждение «событие ушло всем подряд» прошло бы
+    // ложно — и следующий дефект в маршруте никто бы не заметил.
+    const bobSeesAdded = waitFor<{
+      roomId: string;
+      book: { id: string; title: string; coverUrl: string | null; hasText: boolean };
+      addedBy: { id: string };
+      source: string;
+    }>(bobAgain.socket, 'book:added');
+    const carolSeesAdded = waitFor<unknown>(carolConn.socket, 'book:added', 2_500);
+
+    const upload = await uploadToRoom(aliceToken, room.id);
+    check('книга загружена в комнату', upload.status === 201, `статус ${upload.status}`);
+
+    const added = await bobSeesAdded;
+    check('второй клиент получил book:added', added !== null);
+    check('в событии верная комната', added?.roomId === room.id);
+    check(
+      'в payload книга с названием',
+      typeof added?.book.title === 'string' && added.book.title.length > 0,
+    );
+    check('в payload есть признак текста', added?.book.hasText === true);
+    // Ключ присутствует со значением null, а не отсутствует: иначе клиент
+    // отличал бы «обложки нет» от «сервер не прислал сведения о книге».
+    check('обложка в payload равна null, а не отсутствует', added !== null && added.book.coverUrl === null);
+    check('источник — upload', added?.source === 'upload', `source: ${added?.source}`);
+    check('указан, кто добавил', added?.addedBy.id === alice.id);
+    check('постороннему в комнату событие не ушло', (await carolSeesAdded) === null);
+
+    // Добавление из каталога: то же событие, другой источник. Событие легко
+    // забыть именно здесь — книга появляется в комнате через `from-catalog`, а
+    // не через загрузку файла.
+    const catalogBook = await prisma.book.create({
+      data: {
+        title: 'Из каталога',
+        author: 'Автор',
+        isCatalog: true,
+        files: {
+          create: [
+            {
+              kind: 'text',
+              format: 'epub',
+              filePath: `files/socket/${suffix}-catalog.epub`,
+              fileSize: 1,
+              mimeType: 'application/epub+zip',
+            },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+
+    const bobSeesFromCatalog = waitFor<{ source: string; book: { id: string } }>(
+      bobAgain.socket,
+      'book:added',
+    );
+    const fromCatalog = await fetch(`${BASE}/api/rooms/${room.id}/books/from-catalog`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${aliceToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ catalogBookId: catalogBook.id }),
+    });
+    check('книга добавлена из каталога', fromCatalog.status === 201, `статус ${fromCatalog.status}`);
+
+    const fromCatalogEvent = await bobSeesFromCatalog;
+    check('то же событие при добавлении из каталога', fromCatalogEvent !== null);
+    check('источник — catalog', fromCatalogEvent?.source === 'catalog', `source: ${fromCatalogEvent?.source}`);
+    check('в payload та самая книга', fromCatalogEvent?.book.id === catalogBook.id);
+
+    // Повторное добавление события не шлёт: книга уже стоит, и второе событие
+    // показало бы «Борис добавил книгу» для книги, которая уже была.
+    const bobSeesDuplicate = waitFor<unknown>(bobAgain.socket, 'book:added', 2_000);
+    const duplicate = await fetch(`${BASE}/api/rooms/${room.id}/books/from-catalog`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${aliceToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ catalogBookId: catalogBook.id }),
+    });
+    check('повторное добавление отвечает added: false', duplicate.status === 200);
+    check('и события не шлёт', (await bobSeesDuplicate) === null);
+
+    const bobSeesRemoved = waitFor<{ roomId: string; bookId: string }>(bobAgain.socket, 'book:removed');
+    const removed = await fetch(`${BASE}/api/rooms/${room.id}/books/${catalogBook.id}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${aliceToken}` },
+    });
+    check('книга убрана из комнаты', removed.status === 200, `статус ${removed.status}`);
+
+    const removal = await bobSeesRemoved;
+    check('второй клиент получил book:removed', removal !== null);
+    check('в удалении верная книга', removal?.bookId === catalogBook.id);
+    check('в удалении верная комната', removal?.roomId === room.id);
+
+    // Каталог общий: событие уходит всем подключённым, а не в комнату. Иначе
+    // каталог обновлялся бы только у того, кто и так в комнате состоит.
+    const bobSeesCatalogAdd = waitFor<{ book: { id: string } }>(bobAgain.socket, 'catalog:book:added');
+    const carolSeesCatalogAdd = waitFor<{ book: { id: string } }>(
+      carolConn.socket,
+      'catalog:book:added',
+      3_000,
+    );
+
+    const adminSuffix = randomUUID().slice(0, 8);
+    const adminToken = `admin_${adminSuffix}_${randomUUID()}`;
+    await prisma.user.create({
+      data: {
+        username: `adm_${adminSuffix}`,
+        displayName: 'Админ',
+        tokenHash: hashToken(adminToken),
+        role: 'admin',
+      },
+      select: { id: true },
+    });
+    const adminConn = await connect(adminToken);
+    if (adminConn.socket !== null) sockets.push(adminConn.socket);
+
+    const toCatalog = await uploadToCatalog(adminToken);
+    check('книга загружена в каталог', toCatalog.status === 201, `статус ${toCatalog.status}`);
+
+    check('подписчик каталога получил событие', (await bobSeesCatalogAdd) !== null);
+    check(
+      'постороннему в комнате событие каталога тоже пришло',
+      (await carolSeesCatalogAdd) !== null,
+      'каталог не принадлежит ни одной комнате',
+    );
   } catch (error) {
     failed++;
     console.log(`\n  ✗ сценарий прерван: ${error instanceof Error ? error.message : String(error)}`);

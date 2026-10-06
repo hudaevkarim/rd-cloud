@@ -71,6 +71,24 @@ export interface PresenceEntry {
   updatedAt: string;
 }
 
+/**
+ * Книга в том виде, в каком она уходит в событии.
+ *
+ * Отдельный тип, а не `BookSummary` из маршрутов: маршруты отдают ещё `files` с
+ * адресами и флагами разбора, а в списке комнаты для показа достаточно обложки,
+ * названия и пары «есть текст / есть аудио». Лишние поля в каждом событии — это
+ * лишние байты на каждого подписчика.
+ */
+export interface BookEventPayload {
+  id: string;
+  title: string;
+  author: string;
+  /** Адрес обложки или `null`, если её нет. */
+  coverUrl: string | null;
+  hasText: boolean;
+  hasAudio: boolean;
+}
+
 /** Ответ на `room:join`. */
 export interface JoinResult {
   ok: boolean;
@@ -91,6 +109,31 @@ export interface ServerToClientEvents {
 
   'presence:changed': (payload: PresenceEntry) => void;
   'presence:left': (payload: { userId: string; roomId: string }) => void;
+
+  /**
+   * Книга в комнате: загружена файлом или добавлена из каталога.
+   *
+   * Одно событие на оба пути — с точки зрения читателя это одно и то же, и
+   * различать их в обработчике незачем. `source` нужен только тосту: «Борис
+   * загрузил книгу» и «Борис добавил книгу из каталога» — разные фразы.
+   *
+   * Нагрузки хватает, чтобы вставить книгу в список без запроса. Пропущенное
+   * событие приведёт к «недостающей» книге до перезагрузки, а не к
+   * рассинхрону: REST остаётся источником правды, и по F5 всё сойдётся.
+   */
+  'book:added': (payload: {
+    roomId: string;
+    book: BookEventPayload;
+    addedBy: { id: string; displayName: string };
+    source: 'upload' | 'catalog';
+  }) => void;
+  'book:removed': (payload: { roomId: string; bookId: string }) => void;
+
+  /** Книга добавлена в общий каталог. Всем подключённым, не в комнату. */
+  'catalog:book:added': (payload: {
+    book: BookEventPayload;
+    addedBy: { id: string; displayName: string };
+  }) => void;
 
   /**
    * Комментарии и реакции — сигнал, а не источник правды.

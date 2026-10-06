@@ -126,6 +126,9 @@ model Book {
   title        String
   author       String
   description  String?
+  // Биография автора. Отдельное поле, а не часть `description`: описание — это
+  // описание книги, биография — об авторе и одинакова для всех его книг.
+  authorBio    String?
   coverPath    String? // относительный путь от DATA_DIR
   isCatalog    Boolean  @default(false) // true = в общем каталоге классики
   language     String? // "ru", "en"

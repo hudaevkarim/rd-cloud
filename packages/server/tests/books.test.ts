@@ -77,8 +77,62 @@ const upload = (
   });
 };
 
+/**
+ * Загрузка в каталог.
+ *
+ * Отдельная сборка multipart: у каталога имена полей-файлов (`text`, `audio`,
+ * `cover`), а не `file` с полями `kind` и `format`. Вид несёт имя поля, и
+ * поэтому контракта «поля раньше файла» здесь нет — файл может прийти где угодно.
+ */
+function buildCatalogMultipart(
+  fields: Record<string, string>,
+  files: Array<{ field: string; path: string }>,
+) {
+  const boundary = `----rdcat${Math.random().toString(36).slice(2)}`;
+  const chunks: Buffer[] = [];
+
+  for (const [name, value] of Object.entries(fields)) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+        'utf8',
+      ),
+    );
+  }
+  for (const { field, path } of files) {
+    const fileName = path.split(/[\\/]/).pop() ?? 'file';
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${fileName}"\r\n` +
+          'Content-Type: application/octet-stream\r\n\r\n',
+        'utf8',
+      ),
+    );
+    chunks.push(readFileSync(path));
+    chunks.push(Buffer.from('\r\n', 'utf8'));
+  }
+  chunks.push(Buffer.from(`--${boundary}--\r\n`, 'utf8'));
+
+  return { payload: Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
+const uploadToCatalog = (
+  token: string,
+  fields: Record<string, string>,
+  files: Array<{ field: string; path: string }>,
+) => {
+  const { payload, contentType } = buildCatalogMultipart(fields, files);
+  return app.inject({
+    method: 'POST',
+    url: '/api/admin/catalog',
+    headers: { ...auth(token), 'content-type': contentType },
+    payload,
+  });
+};
+
 const EPUB = () => join(FIXTURES, 'test-book.epub');
 const MP3 = () => join(FIXTURES, 'test-audio.mp3');
+const JPEG = () => join(FIXTURES, 'cover.jpg');
 
 beforeAll(async () => {
   await mkdir(FIXTURES, { recursive: true });
@@ -268,12 +322,21 @@ describe('права', () => {
 
 describe('удаление книги', () => {
   it('убирает с диска и оригинал, и каталог разбора', async () => {
-    const owner = await createTestUser();
-    const { roomId } = await createTestRoom({ ownerId: owner.user.id });
+    /*
+      Глобальное удаление — только админское.
+
+      Раньше правило было «владелец любой комнаты, где лежит книга, либо админ»,
+      и оно работало, пока книга жила в одной комнате. С появлением каталога одна
+      и та же книга лежит сразу во многих, и кнопка в одной комнате сносила её у
+      всех остальных. Поэтому в комнате теперь `DELETE /rooms/:roomId/books/:bookId`
+      (снятие связи), а удаление целиком осталось здесь.
+    */
+    const admin = await createTestUser({ role: 'admin' });
+    const { roomId } = await createTestRoom({ ownerId: admin.user.id });
 
     const response = await upload(
       `/api/rooms/${roomId}/books/upload`,
-      owner.token,
+      admin.token,
       { kind: 'text', format: 'epub', title: 'Удаляемая', author: 'Автор' },
       EPUB(),
     );
@@ -290,7 +353,7 @@ describe('удаление книги', () => {
     const removed = await app.inject({
       method: 'DELETE',
       url: `/api/books/${bookId}`,
-      headers: auth(owner.token),
+      headers: auth(admin.token),
     });
     expect(removed.statusCode).toBe(200);
 
@@ -301,14 +364,17 @@ describe('удаление книги', () => {
     expect(existsSync(derivedDir)).toBe(false);
   });
 
-  it('не владелец комнаты удалить не может', async () => {
-    const owner = await createTestUser();
-    const member = await createTestUser();
-    const { roomId } = await createTestRoom({ ownerId: owner.user.id, memberIds: [member.user.id] });
+  it('участник удалить книгу целиком не может', async () => {
+    const admin = await createTestUser({ role: 'admin' });
+    const member = await createTestUser({ role: 'user' });
+    const { roomId } = await createTestRoom({
+      ownerId: admin.user.id,
+      memberIds: [member.user.id],
+    });
 
     const response = await upload(
       `/api/rooms/${roomId}/books/upload`,
-      owner.token,
+      admin.token,
       { kind: 'text', format: 'epub', title: 'Книга', author: 'Автор' },
       EPUB(),
     );
@@ -330,11 +396,10 @@ describe('каталог', () => {
     const admin = await createTestUser({ role: 'admin' });
     const { roomId } = await createTestRoom({ ownerId: admin.user.id });
 
-    const response = await upload(
-      '/api/admin/catalog',
+    const response = await uploadToCatalog(
       admin.token,
-      { kind: 'text', format: 'epub', title: 'Евгений Онегин', author: 'А. С. Пушкин' },
-      EPUB(),
+      { title: 'Евгений Онегин', author: 'А. С. Пушкин' },
+      [{ field: 'text', path: EPUB() }],
     );
     expect(response.statusCode).toBe(201);
     const catalogId = response.json().book.id as string;
@@ -366,11 +431,10 @@ describe('каталог', () => {
   it('не админ каталог пополнить не может', async () => {
     const user = await createTestUser({ role: 'user' });
 
-    const response = await upload(
-      '/api/admin/catalog',
+    const response = await uploadToCatalog(
       user.token,
-      { kind: 'text', format: 'epub', title: 'X', author: 'Y' },
-      EPUB(),
+      { title: 'X', author: 'Y' },
+      [{ field: 'text', path: EPUB() }],
     );
 
     expect(response.statusCode).toBe(403);
@@ -378,11 +442,10 @@ describe('каталог', () => {
 
   it('поиск по каталогу находит по автору', async () => {
     const admin = await createTestUser({ role: 'admin' });
-    await upload(
-      '/api/admin/catalog',
+    await uploadToCatalog(
       admin.token,
-      { kind: 'text', format: 'epub', title: 'Евгений Онегин', author: 'А. С. Пушкин' },
-      EPUB(),
+      { title: 'Евгений Онегин', author: 'А. С. Пушкин' },
+      [{ field: 'text', path: EPUB() }],
     );
 
     // Запрос кодируется: необработанная кириллица доезжает до сервера как

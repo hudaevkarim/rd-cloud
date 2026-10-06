@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import type { PresenceEntry, WireComment } from './types.js';
+import type { PresenceEntry, BookEventPayload, WireComment } from './types.js';
 
 /**
  * Рассылка событий.
@@ -132,6 +132,50 @@ export function presenceChanged(roomId: string, entry: PresenceEntry): void {
 /** Человек ушёл из комнаты. */
 export function presenceLeft(roomId: string, userId: string): void {
   io?.to(channelOf(roomId)).emit('presence:left', { userId, roomId });
+}
+
+/**
+ * Книга появилась в комнате.
+ *
+ * Одно событие на оба пути — загрузку файла и добавление из каталога: с точки
+ * зрения читателя это одно и то же, и различать их в обработчике незачем.
+ * Различие живёт в `source`, по нему тост пишется разный.
+ *
+ * Исключения нет: у загрузившего книга уже есть из ответа REST, но подтверждение
+ * приятно и ему — событие несёт и `addedBy`, а человек узнает, что его книгу
+ * увидели. Убирать событие из второй вкладки того же человека нельзя: там
+ * список книг обновиться обязан.
+ */
+export function bookAdded(
+  roomId: string,
+  book: BookEventPayload,
+  addedBy: { id: string; displayName: string },
+  source: 'upload' | 'catalog',
+): void {
+  io?.to(channelOf(roomId)).emit('book:added', { roomId, book, addedBy, source });
+}
+
+/**
+ * Книга исчезла из комнаты.
+ *
+ * Без исключения удалившего — по той же причине, что и у `book:added`: во
+ * второй вкладке человека список должен обновиться.
+ */
+export function bookRemoved(roomId: string, bookId: string): void {
+  io?.to(channelOf(roomId)).emit('book:removed', { roomId, bookId });
+}
+
+/**
+ * Книга добавлена в общий каталог.
+ *
+ * Идёт всем подключённым, а не в комнату: каталог не принадлежит ни одной из
+ * них, и комнатный канал не подошёл бы в принципе.
+ */
+export function catalogBookAdded(
+  book: BookEventPayload,
+  addedBy: { id: string; displayName: string },
+): void {
+  io?.emit('catalog:book:added', { book, addedBy });
 }
 
 /**
