@@ -276,17 +276,34 @@ export const roomRoutes: FastifyPluginAsync = async (app) => {
       select: { id: true, name: true, members: { select: { userId: true } } },
     });
     if (room === null) throw AppError.notFound('Комната');
-    // Одна заявка от человека на комнату: схема запрещает дубли по
-    // (roomId, userId, status), и повторная отправка должна давать понятный
-    // ответ, а не ошибку уникальности из глубины Prisma.
-    const pending = await prisma.joinRequest.findFirst({
-      where: { roomId: id, userId: me.id, status: 'pending' },
-      select: { id: true },
-    });
-    if (pending !== null) throw AppError.conflict('Заявка уже отправлена и ждёт ответа');
+    /*
+      Заявка — одна строка на человека, и `status` у неё текущий. Поэтому
+      повторная подача не вставляет новую строку, а возвращает прежнюю в
+      состояние «ждёт ответа».
 
-    const request_ = await prisma.joinRequest.create({
-      data: { roomId: id, userId: me.id, status: 'pending' },
+      Раньше здесь был `create`, и он падал бы по уникальному индексу: человека
+      приняли, исключили, он подал заявку снова — а строка от первой заявки уже
+      есть. Индекс по тройке `(roomId, userId, status)` давал поломку с другой
+      стороны: одобрение повторной заявки обрывалось на P2002, то есть 500
+      вместо «добавлен в комнату». Подробности — в миграции
+      `20261006000000_join_request_unique_user`.
+
+      `decidedAt` и `decidedById` очищаются: решение по прошлой заявке к новой
+      отношения не имеет, и оставленная метка показывала бы в списке время,
+      когда этой заявки ещё не было.
+    */
+    const existing = await prisma.joinRequest.findUnique({
+      where: { roomId_userId: { roomId: id, userId: me.id } },
+      select: { id: true, status: true },
+    });
+    if (existing?.status === 'pending') {
+      throw AppError.conflict('Заявка уже отправлена и ждёт ответа');
+    }
+
+    const request_ = await prisma.joinRequest.upsert({
+      where: { roomId_userId: { roomId: id, userId: me.id } },
+      create: { roomId: id, userId: me.id, status: 'pending' },
+      update: { status: 'pending', decidedAt: null, decidedById: null },
       select: { id: true, createdAt: true, status: true },
     });
 

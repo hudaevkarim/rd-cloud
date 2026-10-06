@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { auth, setToken } from '../api/client.js';
+import { ApiError, auth, setToken } from '../api/client.js';
 import type { CurrentUser } from '../api/types.js';
 import { AuthContext, TOKEN_STORAGE_KEY, type AuthContextValue } from './auth-context.js';
 
@@ -103,12 +103,30 @@ export function AuthProvider({
       .then((body) => {
         setUser(body.user);
       })
-      .catch(() => {
-        // Любая ошибка означает одно: сессии нет. Различать «токен неверный» и
-        // «сервер недоступен» здесь нельзя — во втором случае человек увидит
-        // форму входа и попробует ещё раз.
-        setToken(null);
-        writeToken(store, null);
+      .catch((error: unknown) => {
+        /*
+          Стирается токен только когда сервер сказал, что сессии нет (401).
+
+          Раньше токен стирался на любую ошибку, и это стоило человеку сессии
+          дважды:
+
+            — обрыв сети, 500 или 429 на время проверки — токен удалялся, и
+              ввести его снова было уже нечем;
+            — переход на другую страницу во время проверки. Запрос отменяется,
+              `fetch` отклоняется, `catch` срабатывает — и при **верном** токене
+              человек оказывался на форме входа без единой попытки войти.
+              Наблюдалось в живом браузере: открыл страницу, ушёл с неё на
+              соседнюю, вернулся — `/login`, в хранилище пусто.
+
+          Различить эти случаи можно, и нужно: код ответа известен точно.
+          При временной ошибке токен остаётся, `user` остаётся `null`, и
+          следующая перезагрузка восстановит сессию сама — вводить токен заново
+          не придётся.
+        */
+        if (error instanceof ApiError && error.status === 401) {
+          setToken(null);
+          writeToken(store, null);
+        }
         setUser(null);
       })
       .finally(() => {

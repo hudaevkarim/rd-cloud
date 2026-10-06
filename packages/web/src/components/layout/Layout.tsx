@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { BottomNav } from './BottomNav.js';
 import { TopBar } from './TopBar.js';
+import { Notifications } from '../../rooms/Notifications.js';
 
 /**
  * Каркас страницы.
@@ -15,6 +16,14 @@ import { TopBar } from './TopBar.js';
  *
  * На десктопе тот же отступ снят: там нижней навигации нет, и лишние 56px
  * образовали бы пустую полосу под последним элементом.
+ *
+ * ─── Где стоит подписка на уведомления ───────────────────────────────────────
+ *
+ * Здесь, а не на каждой странице. Тост должен появиться на той странице, где
+ * человек сидел в момент события, — то есть везде; а подписка в `<App>` не
+ * сработала бы по простой причине: `<Routes>` принимает только `<Route>` и
+ * `<Fragment>` детьми, и компонент между ними вызывает ошибку при монтировании.
+ * Наблюдалось как «[Notifications] is not a <Route> component».
  */
 export function Layout() {
   return (
@@ -26,6 +35,9 @@ export function Layout() {
       </a>
 
       <TopBar />
+
+      {/* Компонент ничего не рисует: подписка на `notification:new` и тосты. */}
+      <Notifications />
 
       <main className="layout__main" id="main">
         <Outlet />

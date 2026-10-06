@@ -103,7 +103,19 @@ model JoinRequest {
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([roomId, userId, status])
+  // Одна заявка на человека в комнате, и `status` — её текущее состояние, а не
+  // запись в журнале. Список заявок отдаёт только ожидающие, и историю одобренных
+  // и отклонённых никто не читает.
+  //
+  // Индекс раньше был `@@unique([roomId, userId, status])` и задумывался как «не
+  // больше одной ожидающей заявки». Он запрещал и вторую строку со статусом
+  // `approved`: человек вошёл, его исключили, он подал заявку снова — и одобрение
+  // падало с 500. Наблюдалось вживую, P2002.
+  //
+  // Частичный индекс `WHERE status = 'pending'` был бы точнее, но Prisma таких не
+  // объявляет, и `migrate dev` предложил бы его удалить. Подробности — в
+  // миграции `20261006000000_join_request_unique_user`.
+  @@unique([roomId, userId])
   @@index([userId, status])
 }
 

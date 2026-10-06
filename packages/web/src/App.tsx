@@ -3,14 +3,16 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { Layout } from './components/layout/Layout.js';
 import { RequireAdmin, RequireAuth } from './components/RequireAuth.js';
 import { LoginPage } from './pages/Login.js';
+import { LobbyPage } from './pages/Lobby.js';
+import { SearchPage } from './pages/Search.js';
+import { JoinByCode } from './pages/JoinByCode.js';
+import { RoomView } from './rooms/RoomView.js';
+import { Notifications } from './rooms/Notifications.js';
 import {
   AdminPage,
   CatalogPage,
-  LobbyPage,
   ProfilePage,
   ReaderPage,
-  RoomPage,
-  SearchPage,
 } from './pages/Placeholders.js';
 
 /**
@@ -75,6 +77,19 @@ export function App() {
       )}
 
       <Route element={<RequireAuth />}>
+        {/*
+          `/join/{код}` — под каркасом и под `RequireAuth`.
+
+          Под `RequireAuth` потому, что войти без пользователя нельзя: некого
+          добавлять в `RoomMember`. Он же запомнит адрес в `location.state.from`,
+          и после входа `LoginPage` вернёт ровно сюда — иначе приглашение
+          потерялось бы и человек оказался бы в лобби.
+
+          Вне `<Layout>`, потому что это не страница приложения, а переход по
+          внешней ссылке: шапка с ником и нижняя навигация здесь только мешают.
+        */}
+        <Route path="/join/:inviteCode" element={<JoinByCode />} />
+
         <Route element={<Layout />}>
           <Route path="/" element={<LobbyPage />} />
           <Route path="/rooms/:roomId" element={<RoomRoute />} />
@@ -108,7 +123,7 @@ export function App() {
 
 function RoomRoute() {
   const { roomId = '' } = useParams();
-  return <RoomPage roomId={roomId} />;
+  return <RoomView roomId={roomId} />;
 }
 
 function ReaderRoute() {

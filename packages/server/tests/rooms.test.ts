@@ -427,6 +427,128 @@ describe('заявки на вступление', () => {
     expect(closed.status).toBe('rejected');
   });
 
+  /*
+    Повторная заявка после отклонения.
+
+    Заявка — одна строка на человека, и повторная подача переводит её обратно в
+    «ждёт ответа». Прежде индекс был по тройке `(roomId, userId, status)`, и
+    вставка новой строки после отклонённой падала бы на уникальном индексе.
+  */
+  it('после отклонения можно подать заявку снова', async () => {
+    const owner = await createTestUser();
+    const candidate = await createTestUser();
+    const { roomId } = await createTestRoom({ ownerId: owner.user.id });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join-request`,
+      headers: auth(candidate.token),
+    });
+    expect(first.statusCode).toBe(201);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/${roomId}/join-requests`,
+      headers: auth(owner.token),
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join-requests/${list.json().requests[0].id}/reject`,
+      headers: auth(owner.token),
+    });
+
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join-request`,
+      headers: auth(candidate.token),
+    });
+    expect(again.statusCode).toBe(201);
+
+    // Заявка снова ожидает ответа, и в комнате она ровно одна: строка прежней
+    // заявки не осталась отдельной записью.
+    const after = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/${roomId}/join-requests`,
+      headers: auth(owner.token),
+    });
+    expect(after.json().requests).toHaveLength(1);
+    expect(await testDb.joinRequest.count({ where: { roomId, userId: candidate.user.id } })).toBe(1);
+
+    // Решение прошлой заявки не должно висеть на новой: метка времени прежнего
+    // решения показывала бы в списке момент, когда заявки ещё не существовало.
+    const row = await testDb.joinRequest.findUniqueOrThrow({
+      where: { roomId_userId: { roomId, userId: candidate.user.id } },
+    });
+    expect(row.status).toBe('pending');
+    expect(row.decidedAt).toBeNull();
+    expect(row.decidedById).toBeNull();
+  });
+
+  /*
+    Возвращение в комнату после исключения.
+
+    Именно этот путь ломался в живом браузере: `JoinRequest_roomId_userId_status_key`
+    не давал завести вторую строку со статусом `approved`, и одобрение
+    повторной заявки падало с 500 (P2002). Человек видел «Внутренняя ошибка
+    сервера» вместо «добавлен в комнату».
+  */
+  it('принятый и исключённый человек может вернуться и быть принят снова', async () => {
+    const owner = await createTestUser();
+    const candidate = await createTestUser();
+    const { roomId } = await createTestRoom({ ownerId: owner.user.id });
+
+    const requestJoin = async (): Promise<string> => {
+      const list = await app.inject({
+        method: 'GET',
+        url: `/api/rooms/${roomId}/join-requests`,
+        headers: auth(owner.token),
+      });
+      return list.json().requests[0].id as string;
+    };
+
+    // Первый цикл: заявка и одобрение.
+    await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join-request`,
+      headers: auth(candidate.token),
+    });
+    const firstApproval = await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join-requests/${await requestJoin()}/approve`,
+      headers: auth(owner.token),
+    });
+    expect(firstApproval.statusCode).toBe(201);
+
+    // Исключение.
+    const kick = await app.inject({
+      method: 'DELETE',
+      url: `/api/rooms/${roomId}/members/${candidate.user.id}`,
+      headers: auth(owner.token),
+    });
+    expect(kick.statusCode).toBe(200);
+
+    // Второй цикл: та же заявка, то же одобрение — и никакого 500.
+    const again = await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join-request`,
+      headers: auth(candidate.token),
+    });
+    expect(again.statusCode).toBe(201);
+
+    const secondApproval = await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/join-requests/${await requestJoin()}/approve`,
+      headers: auth(owner.token),
+    });
+    expect(secondApproval.statusCode).toBe(201);
+
+    const member = await testDb.roomMember.findUnique({
+      where: { roomId_userId: { roomId, userId: candidate.user.id } },
+    });
+    expect(member?.role).toBe('member');
+    expect(await testDb.joinRequest.count({ where: { roomId, userId: candidate.user.id } })).toBe(1);
+  });
+
   it('приглашение от участника пускает сразу, без заявки', async () => {
     const owner = await createTestUser();
     const guest = await createTestUser();

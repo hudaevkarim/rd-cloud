@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import type { WireComment } from '../api/types.js';
+import type { WireComment, WireNotification } from '../api/types.js';
 
 /**
  * Клиент сокетов.
@@ -75,12 +75,7 @@ export interface ServerToClient {
     active: boolean;
     userId: string;
   }) => void;
-  'notification:new': (payload: {
-    id: string;
-    type: string;
-    payload: Record<string, unknown>;
-    createdAt: string;
-  }) => void;
+  'notification:new': (payload: WireNotification) => void;
 }
 
 export type TypedSocket = Socket<ServerToClient, ClientToServer>;
@@ -105,6 +100,17 @@ export function connectSocket(token: string): TypedSocket {
     // Токен в `auth`, а не в cookie: см. шапку файла.
     auth: { token },
     transports: ['websocket', 'polling'],
+    /*
+      Откат на следующий транспорт, если первый не прошёл.
+
+      По умолчанию выключен: клиент, не сумевший апгрейдиться до WebSocket,
+      просто сдаётся, и на прокси без апгрейда соединение не поднимется вовсе —
+      ровно то, что происходило в разработке при `ws: false` у Vite. Теперь
+      прокси апгрейд пропускает, но страховка остаётся: если апгрейд заблокирует
+      что-то ещё (прокси в цепочке, расширение браузера), соединение поднимется
+      длинным опросом, пусть и медленнее.
+    */
+    tryAllTransports: true,
     reconnection: true,
     reconnectionAttempts: 10,
     // 1 секунда для первой попытки, дальше экспонента с потолком в 10 секунд:

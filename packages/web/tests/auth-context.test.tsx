@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { StrictMode, type ReactElement } from 'react';
 import { AuthProvider } from '../src/auth/AuthContext.js';
 import { useAuth } from '../src/auth/auth-context.js';
+import { ApiError } from '../src/api/client.js';
 import { jsonResponse, errorResponse } from './setup.js';
 
 /**
@@ -82,7 +83,7 @@ describe('восстановление сессии', () => {
 
   it('неверный токен: сессия не восстанавливается, токен вычищается', async () => {
     window.localStorage.setItem('rd.token', 'испорченный');
-    const me = vi.fn().mockRejectedValue(new Error('401'));
+    const me = vi.fn().mockRejectedValue(new ApiError(401, null, '401'));
 
     render(wrap(<AuthProvider fetchMe={me}><Probe /></AuthProvider>));
 
@@ -93,6 +94,55 @@ describe('восстановление сессии', () => {
     // Токен убран, иначе при следующей перезагрузке ушёл бы тот же запрос и
     // человек видел бы форму входа по кругу.
     expect(window.localStorage.getItem('rd.token')).toBeNull();
+  });
+
+  /*
+    Токен стирается только на 401 — ответ сервера «сессии нет».
+
+    Проверялось в живом браузере: при переходе на соседнюю страницу во время
+    восстановления сессии запрос отменялся, `catch` срабатывал и удалял токен при
+    верном токене — человек оказывался на форме входа без единой попытки войти.
+  */
+  it('оборванная проверка сессии не выкидывает из аккаунта', async () => {
+    window.localStorage.setItem('rd.token', 'верный-токен');
+    const me = vi.fn().mockRejectedValue(new DOMException('aborted', 'AbortError'));
+
+    render(wrap(<AuthProvider fetchMe={me}><Probe /></AuthProvider>));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ready')).toHaveTextContent('true');
+    });
+    expect(screen.getByTestId('user')).toHaveTextContent('нет');
+
+    // Токен на месте: следующая перезагрузка восстановит сессию сама, и вводить
+    // его заново не придётся.
+    expect(window.localStorage.getItem('rd.token')).toBe('верный-токен');
+  });
+
+  it('ошибка сервера не выкидывает из аккаунта', async () => {
+    window.localStorage.setItem('rd.token', 'верный-токен');
+    const me = vi.fn().mockRejectedValue(new ApiError(500, null, '500'));
+
+    render(wrap(<AuthProvider fetchMe={me}><Probe /></AuthProvider>));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ready')).toHaveTextContent('true');
+    });
+    expect(window.localStorage.getItem('rd.token')).toBe('верный-токен');
+  });
+
+  it('слишком много запросов не выкидывает из аккаунта', async () => {
+    window.localStorage.setItem('rd.token', 'верный-токен');
+    const me = vi.fn().mockRejectedValue(new ApiError(429, null, '429'));
+
+    render(wrap(<AuthProvider fetchMe={me}><Probe /></AuthProvider>));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ready')).toHaveTextContent('true');
+    });
+    // 429 — это «подожди», а не «войди заново». Стирание токена здесь отправило
+    // бы человека на форму входа ровно тогда, когда он и так ждёт.
+    expect(window.localStorage.getItem('rd.token')).toBe('верный-токен');
   });
 
   it('пока идёт проверка, ready ещё false', async () => {

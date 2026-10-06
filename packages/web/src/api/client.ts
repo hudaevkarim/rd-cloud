@@ -187,6 +187,8 @@ export const auth = {
 
 // ─── Комнаты ──────────────────────────────────────────────────────────────────
 
+export type { RoomSummary } from './types.js';
+
 export const rooms = {
   async list(): Promise<RoomSummary[]> {
     return (await request<{ rooms: RoomSummary[] }>('/rooms')).rooms;
@@ -255,7 +257,33 @@ export const rooms = {
   async rejectJoin(id: string, requestId: string): Promise<void> {
     await request(`/rooms/${id}/join-requests/${requestId}/reject`, { method: 'POST' });
   },
+
+  /** Исключение участника. Только владелец, не себя. */
+  async removeMember(id: string, userId: string): Promise<void> {
+    await request(`/rooms/${id}/members/${userId}`, { method: 'DELETE' });
+  },
 };
+
+/**
+ * Число вместе со склонённым словом: `3 участника`.
+ *
+ * Возвращает строку целиком, а не только слово. Сначала было наоборот, и число
+ * пропадало: в лобби показывалось «участника · книги» без количества. Выводить
+ * само число отдельно значило бы разорвать пару «3 участника» на два узла, и
+ * поиск по тексту в тестах перестал бы работать.
+ *
+ * Правило русского языка описывает ветку ниже: последние две цифры 11–14 дают
+ * «многие», хотя единственное число 11 — одиннадцать, то есть одно. Без этой
+ * ветки «11 участника» читалось бы как ошибка.
+ */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const mod100 = Math.abs(n) % 100;
+  const mod10 = Math.abs(n) % 10;
+
+  const word = mod100 >= 11 && mod100 <= 14 ? many : mod10 === 1 ? one : mod10 >= 2 && mod10 <= 4 ? few : many;
+
+  return `${n} ${word}`;
+}
 
 // ─── Книги ────────────────────────────────────────────────────────────────────
 

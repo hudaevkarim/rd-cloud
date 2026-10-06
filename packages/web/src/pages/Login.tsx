@@ -21,6 +21,12 @@ import { useTheme } from '../theme/theme-context.js';
  * Ошибка показывается текстом с сервера, а не «не удалось войти»: сервер
  * различает «токен неверный» и «слишком много попыток с одного адреса», и второе
  * человеку полезно увидеть буквально.
+ *
+ * ─── Куда после входа ────────────────────────────────────────────────────────
+ *
+ * Не всегда в лобби: см. `destinationAfterLogin`. Человек, открывший
+ * ссылку-приглашение без сессии, обязан вернуться ровно туда же — иначе
+ * приглашение потерялось бы и он оказался бы в лобби без объяснения.
  */
 export function LoginPage() {
   const { user, ready, login } = useAuth();
@@ -41,11 +47,15 @@ export function LoginPage() {
     );
   }
   if (user !== null) {
-    // `state.from` — куда человек собирался: без него вход с глубокой ссылки
-    // бросал бы на лобби, и пришлось бы искать заново.
-    const from = (location.state as { from?: string } | null)?.from;
-    return <Navigate to={from ?? '/'} replace />;
+    return <Navigate to={destinationAfterLogin(location)} replace />;
   }
+
+  /*
+    Ссылка-приглашение объясняет, что будет дальше: после входа человек вернётся
+    ровно сюда и попадёт в комнату. Без этой подсказки он подумал бы, что его
+    выбросило на форму входа посреди открытой ссылки.
+  */
+  const hasDestination = destinationAfterLogin(location) !== '/';
 
   const submit = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -81,6 +91,12 @@ export function LoginPage() {
 
         <Rule />
 
+        {hasDestination && (
+          <p className="login__from label label-xs">
+            После входа вернёмся на страницу, с которой вы пришли.
+          </p>
+        )}
+
         <Input
           label="Токен"
           type="password"
@@ -108,4 +124,38 @@ export function LoginPage() {
       </form>
     </div>
   );
+}
+
+/**
+ * Куда вести после входа.
+ *
+ * Два источника, и различать их важно:
+ *
+ *   `state.from`  кладёт `RequireAuth` при редиректе. Это основной путь:
+ *                 человек открыл `/join/{код}` без сессии, его увели на форму
+ *                 входа, и после входа он обязан вернуться туда же.
+ *
+ *   `?next=`      нужен для ссылки, пришедшей извне: состояние роутера при
+ *                 этом пусто, потому что адрес открыли напрямую, без перехода
+ *                 внутри приложения.
+ *
+ * Значение из query проверяется: это внешние данные, и `next=https://чужой.сайт`
+ * уводил бы человека с нашего адреса на чужой — с поддельной формой входа и
+ * подписью нашего логотипа. Пустая строка и адрес без ведущей косой черты
+ * отбрасываются по той же причине.
+ */
+export function destinationAfterLogin(location: LocationLike): string {
+  const from = (location.state as { from?: unknown } | null)?.from;
+  if (typeof from === 'string' && from.startsWith('/')) return from;
+
+  const next = new URLSearchParams(location.search).get('next');
+  if (next !== null && next.startsWith('/') && !next.startsWith('//')) return next;
+
+  return '/';
+}
+
+/** Ровно та часть `Location`, которая нужна для решения о возврате. */
+export interface LocationLike {
+  state: unknown;
+  search: string;
 }

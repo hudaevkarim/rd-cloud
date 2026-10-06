@@ -79,9 +79,55 @@ function renderApp(initial: string, user: typeof ADMIN | typeof READER | null) {
   );
 }
 
+/**
+ * Ответы API по адресу.
+ *
+ * Один ответ на все запросы не годится: страницы стали настоящими и тянут
+ * данные. Ответ `{ user: null }` на `GET /api/rooms/abc123` означал бы, что
+ * комната пришла как объект без названия, и страница отрисовала бы пустой
+ * заголовок — тест прошёл бы на сломанной странице.
+ */
+function respondByUrl(url: string): unknown {
+  if (url.includes('/api/auth/me')) return { user: null };
+
+  /*
+    Порядок обязателен: `/api/rooms` совпадает и с `includes('/api/rooms')`, и с
+    точной строкой списка. Проверка по `includes` для одной комнаты стояла выше
+    и перехватывала список — `rooms.list()` получал `{ room: … }` и возвращал
+    `undefined`, а лобби падало на `data.length`. Проверено: тест «обе
+    навигации» падал с «Cannot read properties of undefined (reading 'length')».
+  */
+  if (url === '/api/rooms' || url.startsWith('/api/rooms?')) return { rooms: [] };
+
+  if (url.endsWith('/join-requests')) return { requests: [] };
+  if (url.endsWith('/members')) return { members: [] };
+
+  if (url.includes('/api/rooms/')) {
+    return {
+      room: {
+        id: 'abc123',
+        name: 'Классика',
+        description: 'Читаем по кругу',
+        inviteCode: 'K3MQR7WD',
+        isPublic: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        ownerId: 'u2',
+        owner: { id: 'u2', username: 'boris', displayName: 'Борис', avatar: null },
+        _count: { members: 2, books: 0 },
+        myRole: 'owner',
+      },
+    };
+  }
+
+  return {};
+}
+
 beforeEach(() => {
   window.localStorage.clear();
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ user: null })));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => jsonResponse(respondByUrl(url))),
+  );
 });
 
 describe('защита маршрутов', () => {
@@ -133,15 +179,38 @@ describe('защита маршрутов', () => {
   });
 
   it('комната открывается по адресу', async () => {
+    // Настоящая страница комнаты, а не заглушка: она берёт название из ответа
+    // API, и подстановка `abc123` доказывает, что параметр маршрута дошёл.
     renderApp('/rooms/abc123', READER);
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Комната' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Классика' })).toBeInTheDocument();
     });
-    // Идентификатор подставляется в подсказку: так видно, что параметр
-    // маршрута дошёл, а не остался пустым. Поиск точный, потому что тот же
-    // идентификатор есть в служебном индикаторе пути.
-    expect(screen.getByText(/Комната abc123/)).toBeInTheDocument();
+
+    expect(screen.getByText('Читаем по кругу')).toBeInTheDocument();
+    expect(screen.getByTestId('path')).toHaveTextContent('/rooms/abc123');
+  });
+
+  it('вход по ссылке-приглашению не пускает без сессии', async () => {
+    // `/join/{код}` под `RequireAuth`: без пользователя некого добавлять в
+    // комнату. Адрес обязан сохраниться, иначе после входа приглашение
+    // потерялось бы и человек оказался бы в лобби.
+    renderApp('/join/K3MQR7WD', null);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent('/login');
+    });
+    expect(screen.getByTestId('from')).toHaveTextContent('/join/K3MQR7WD');
+  });
+
+  it('после входа со ссылки-приглашения возвращает на неё', async () => {
+    renderApp('/login?next=/join/K3MQR7WD', READER);
+
+    // `?next=` нужен для ссылки извне: состояние роутера при прямом открытии
+    // пусто, и `state.from` помочь не может.
+    await waitFor(() => {
+      expect(screen.getByTestId('path')).toHaveTextContent('/join/K3MQR7WD');
+    });
   });
 });
 

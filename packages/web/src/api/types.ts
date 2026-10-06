@@ -29,6 +29,18 @@ export interface CurrentUser {
   createdAt?: string;
 }
 
+/** Кого и в каком статусе показывать в заявках. */
+export type RoomTab = 'books' | 'members' | 'requests';
+
+/** Что делает кнопка «Попроситься» в этот момент. */
+export type JoinState =
+  /** Человек не участник и заявки нет — можно проситься. */
+  | 'can-request'
+  /** Заявка висит: повторное нажатие вернуло бы 409. */
+  | 'requested'
+  /** Уже участник: кнопка ведёт в комнату. */
+  | 'joined';
+
 // ─── Комнаты ──────────────────────────────────────────────────────────────────
 
 export interface RoomSummary {
@@ -43,11 +55,26 @@ export interface RoomSummary {
   myRole: 'owner' | 'member' | null;
 }
 
+/**
+ * Комната в выдаче поиска.
+ *
+ * `myRole` и `myPendingRequest` обязательны и присутствуют всегда — включая
+ * `null` и `false`. Клиент различает по ним «можно проситься», «уже в комнате»
+ * и «заявка висит»; отсутствующий ключ означал бы «забыли отдать», и молчание
+ * выглядело бы как «не участник».
+ *
+ * `memberCount` — плоское число, а не вложенный `_count`: вложенный объект
+ * просит на клиенте разбираться в форме ответа там, где достаточно одного
+ * числа для подписи «3 участника».
+ */
 export interface RoomSearchHit {
   id: string;
   name: string;
   description: string | null;
-  _count: { members: number };
+  memberCount: number;
+  owner: { id: string; displayName: string };
+  myRole: 'owner' | 'member' | null;
+  myPendingRequest: boolean;
 }
 
 export interface RoomMember {
@@ -66,6 +93,39 @@ export interface JoinRequest {
   createdAt: string;
   status: 'pending' | 'approved' | 'rejected';
   user: { id: string; username: string; displayName: string; avatar: string | null };
+}
+
+/**
+ * Типы уведомлений, которые сервер шлёт через `notification:new`.
+ *
+ * Объявлены здесь, а не в сокетном контракте строкой: обработчик тоста должен
+ * превращаться в ошибку компиляции при опечатке в имени, иначе уведомление
+ * просто не покажется — тихо и навсегда.
+ */
+export type NotificationType =
+  | 'join_request'
+  | 'join_approved'
+  | 'join_rejected'
+  | 'kicked'
+  | 'added'
+  | 'new_book'
+  | 'reaction'
+  | 'reply';
+
+/** Нагрузка `notification:new`. Содержимое `payload` зависит от типа. */
+export interface WireNotification {
+  id: string;
+  type: NotificationType;
+  payload: {
+    roomId?: string;
+    roomName?: string;
+    userId?: string;
+    userName?: string;
+    commentId?: string;
+    emoji?: string;
+    bookId?: string;
+  };
+  createdAt: string;
 }
 
 // ─── Книги ───────────────────────────────────────────────────────────────────

@@ -1,0 +1,466 @@
+/**
+ * Стили лобби, комнаты и поиска.
+ *
+ * ─── Почему списки плоские, а не карточки ────────────────────────────────────
+ *
+ * Карточка с рамкой и заливкой вокруг каждой строки превращает список из трёх
+ * элементов в три блока, и глаз читает их как отдельные экраны. Разделитель в
+ * 1px держит список единым и не добавляет вертикального шума.
+ *
+ * ─── Что интерактивно ────────────────────────────────────────────────────────
+ *
+ * Смена цвета и подчёркивание, а не подсветка фона. Подсветка фона на строке
+ * списка читается как выделение текста для копирования, а не как «нажмите».
+ */
+
+/* ─── Общее для страниц ────────────────────────────────────────────────────── */
+
+.page__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-8) 0 var(--space-4);
+}
+
+.page__title {
+  font-size: var(--text-title-sm);
+}
+
+/* Кнопки и ссылка в ряд. На узком экране — в столбец: три элемента в ряд на
+   320px дают по 90px, и «Создать комнату» переносился бы на две строки. */
+.page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.page__center {
+  display: grid;
+  place-items: center;
+  padding: var(--space-16) 0;
+}
+
+/* ─── Ссылки-как-текст ──────────────────────────────────────────────────────── */
+
+/**
+ * Подчёркивание всегда видно, а не только при наведении.
+ *
+ * Иначе на телефоне нечто без подчёркивания неотличимо от обычного текста: там
+ * нет наведения, и человек не знает, что это ссылка.
+ */
+.link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  transition: color var(--transition);
+}
+
+.link:hover {
+  color: var(--accent);
+}
+
+.link--danger {
+  color: var(--accent);
+}
+
+.link--danger:hover {
+  color: var(--ink);
+}
+
+/* ─── Списки строк ──────────────────────────────────────────────────────────── */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rows__item {
+  border-bottom: 1px solid var(--rule);
+}
+
+.rows__item:last-child {
+  border-bottom: none;
+}
+
+/* ─── Пустое состояние ──────────────────────────────────────────────────────── */
+
+/*
+  Без рамки и заливки: пустое состояние объясняет, что делать, а не украшает
+  страницу. Рамка превратила бы его в объект, который выглядит как элемент
+  списка, но ничего не делает.
+*/
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-16) 0;
+  max-width: var(--measure);
+}
+
+.empty__title {
+  font-size: var(--text-ui);
+  letter-spacing: var(--track-ui);
+}
+
+.empty__text {
+  margin: 0;
+  font-size: var(--text-ui-sm);
+  line-height: var(--leading-ui);
+  color: var(--ink-2);
+}
+
+.empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* ─── Лобби ─────────────────────────────────────────────────────────────────── */
+
+.roomrow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  /* Отступы — вместо рамки: строка кликабельна целиком, и подсветки фона нет,
+     но место под неё должно быть, иначе текст липнет к разделителю. */
+  padding: var(--space-4) 0;
+  color: var(--ink);
+  transition: color var(--transition);
+}
+
+.roomrow:hover {
+  color: var(--accent);
+}
+
+.roomrow__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.roomrow__name {
+  font-size: var(--text-ui);
+  letter-spacing: var(--track-ui);
+}
+
+/*
+  Описание обрезается одной строкой.
+  Многострочное описание растягивало бы строку на пол-экрана, и список из трёх
+  комнат переставал бы помещаться в один взгляд.
+*/
+.roomrow__desc {
+  font-size: var(--text-ui-sm);
+  line-height: var(--leading-ui);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomrow__meta {
+  color: var(--ink-2);
+}
+
+/* Метка-подпись. Не тэг: тэг читается как статус, а «владелец» — это роль. */
+.tag {
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* ─── Шапка комнаты ─────────────────────────────────────────────────────────── */
+
+.roomhead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-8) 0 var(--space-4);
+}
+
+.roomhead__name {
+  font-size: var(--text-title);
+  margin: 0;
+}
+
+.roomhead__desc {
+  margin: 0;
+  max-width: var(--measure);
+  font-size: var(--text-ui-sm);
+  line-height: var(--leading-ui);
+  color: var(--ink-2);
+}
+
+.roomhead__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+/* Счётчик присутствия. Мелкий и тихий: это сведения, а не заголовок. */
+.roomhead__online {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-2);
+}
+
+/* ─── Вкладки ───────────────────────────────────────────────────────────────── */
+
+/*
+  Сегментированный контрол, а не ряд ссылок.
+  Три вкладки на 320px не помещаются в строку: «Книги» + «Участники» +
+  «Заявки» плюс счётчик занимают больше ширины экрана. Контрол делит доступную
+  ширину на три равные части, и каждая попадает под палец.
+*/
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid var(--rule);
+}
+
+.tabs__tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--touch);
+  padding: var(--space-2);
+  font-size: var(--text-ui-sm);
+  letter-spacing: var(--track-ui);
+  color: var(--ink-2);
+  border-right: 1px solid var(--rule);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.tabs__tab:last-child {
+  border-right: none;
+}
+
+/*
+  Активная вкладка — заливка акцентом, а не цветом текста.
+  Цветом текста вкладка выглядела бы гиперссылкой, а её роль — переключатель
+  раздела. Заливка акцентом читается однозначно и держит контраст: на тёмной
+  теме акцент светлый, а текст на нём тёмный.
+*/
+.tabs__tab.is-active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.tabs__count {
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+/* ─── Участники и заявки ────────────────────────────────────────────────────── */
+
+.memberrow,
+.requestrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.memberrow__name,
+.requestrow__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-ui-sm);
+  /* Имя не переносится: перенос посреди имени ломает его на две строки и
+     съедает высоту строки. Обрезается многоточием. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.requestrow .label-xs {
+  color: var(--ink-2);
+}
+
+.requestrow__actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ─── Кружок с инициалами ──────────────────────────────────────────────────── */
+
+/*
+  Единственное место с ненулевым скруглением.
+  Круг и есть исключение из правила «никаких скруглений»: плоский квадрат на
+  месте аватара читался бы как квадрат, а не как обозначение человека.
+*/
+.avatar {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--paper-2);
+  border: 1px solid var(--rule);
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+  color: var(--ink-2);
+  /* Заливка светлее фона обязательна: на белом листе круг того же цвета, что и
+     фон, был бы виден только по рамке, а на тёмной теме — почти не виден. */
+}
+
+/* Точка «сейчас читает». Обводка цветом фона обязательна: без неё на кружке
+   того же цвета точка сливалась бы с ним и была бы не видна. */
+.avatar__dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 1px solid var(--paper);
+}
+
+/* ─── Результат поиска ──────────────────────────────────────────────────────── */
+
+.hitrow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+}
+
+.hitrow__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.hitrow__name {
+  font-size: var(--text-ui);
+  letter-spacing: var(--track-ui);
+}
+
+.hitrow__desc {
+  font-size: var(--text-ui-sm);
+  line-height: var(--leading-ui);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+  Кнопка справа не сжимается.
+  Сжимаясь до двух слов, «Попроситься» переносилось бы на две строки и ломало
+  бы строку списка; на телефоне строка переворачивается целиком.
+*/
+.hitrow__action {
+  flex-shrink: 0;
+}
+
+/* ─── Форма в модальных окнах ──────────────────────────────────────────────── */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.form .rule {
+  margin: 0;
+}
+
+/* Чекбокс целиком кликабельный: на телефоне попадать в 13px квадратик пальцем
+   неудобно, а нажимать на текст — привычно. */
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.check input {
+  /* Свой размер не задаётся: системный чекбокс узнаваем, а свой нарисованный
+     выглядит как квадратик без смысла. */
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.check__title {
+  display: block;
+  font-size: var(--text-ui-sm);
+}
+
+.check__hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+
+/* ─── Узкие экраны ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .page__head {
+    padding-top: var(--space-6);
+  }
+
+  /* Строка результата переворачивается: на 320px описание и кнопка в одной
+     строке не помещаются, и кнопка уезжала бы под обрез. */
+  .hitrow {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .hitrow__action {
+    width: 100%;
+  }
+
+  .hitrow__action .btn {
+    width: 100%;
+  }
+
+  .requestrow {
+    /* Заявка — четыре элемента в ряд, на 320px они не помещаются. Кнопки уходят
+       на свою строку, где их ширина известна. */
+    flex-wrap: wrap;
+  }
+
+  .requestrow__actions {
+    width: 100%;
+  }
+
+  .requestrow__actions .btn {
+    flex: 1;
+  }
+
+  /*
+    Участник — кружок, имя, метка роли и кнопка исключения. Без переноски имя
+    сжимается до многоточия почти в ноль, а строка нужна как раз ради имени:
+    человек оказывался со списком, где половина участников не названа.
+
+    Кнопка уходит на свою строку и тянется на всю ширину — так же, как в
+    заявках. Метка роли остаётся в строке с именем: она короткая и «владелец»
+    без кружка не узнаётся.
+  */
+  .memberrow {
+    flex-wrap: wrap;
+  }
+
+  .memberrow .btn {
+    width: 100%;
+  }
+}

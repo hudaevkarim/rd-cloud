@@ -113,6 +113,42 @@ export function registerRoomHandlers(socket: TypedSocket): void {
       await socket.join(channelOf(roomId));
       joined.add(roomId);
 
+      /*
+        Вошедший сразу попадает в карту присутствия.
+
+        Раньше сюда клали только по `presence:update`, то есть когда человек
+        открыл книгу и двинул страницу. Пока этого не случилось, сервер не знал,
+        что человек вообще в комнате, и два открытых окна комнаты показывали
+        друг другу «0 человек читает». Наблюдалось вживую: у второго
+        пользователя в списке не было точки на первом.
+
+        Положение нейтральное — «в комнате, ничего не читает». Точное положение
+        придёт следующим `presence:update`, когда откроется книга.
+      */
+      const known = presenceInRoom(roomId, 1).some((p) => p.userId === user.id);
+      if (!known) {
+        const slot = setPresence(
+          user.id,
+          roomId,
+          user.displayName,
+          user.avatar,
+          'text',
+          {},
+        );
+        // `setPresence` отдаёт слот с `updatedAt` типа `Date`, а в присутствие
+        // для клиента это строка. Приведение делается здесь — на границе, где
+        // типы расходятся по-настоящему, а не молчаливый `as`.
+        presenceChanged(roomId, {
+          userId: slot.userId,
+          displayName: slot.displayName,
+          avatar: slot.avatar,
+          roomId: slot.roomId,
+          positionType: slot.positionType,
+          positionData: slot.positionData,
+          updatedAt: slot.updatedAt.toISOString(),
+        });
+      }
+
       // Локальная переменная, а не поле ответа: поле необязательное, и
       // TypeScript правомерно не дал бы его перебрать без проверки.
       const members = presenceInRoom(roomId, MAX_PRESENCE_IN_ROOM).map(toEntry);

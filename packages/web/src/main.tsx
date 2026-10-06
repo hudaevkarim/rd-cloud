@@ -14,6 +14,7 @@ import './styles/global.css';
 import './styles/components.css';
 import './styles/layout.css';
 import './styles/pages.css';
+import './styles/rooms.css';
 /*
   Стили витрины здесь НЕ подключаются, и это сделано намеренно.
 
