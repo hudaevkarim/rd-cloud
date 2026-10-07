@@ -964,3 +964,71 @@ describe('уведомления', () => {
     expect(notes.map((n) => n.type)).toEqual(['reaction']);
   });
 });
+
+describe('доступ к комментариям', () => {
+  /*
+    Правило одно на все маршруты комнаты — `canAccessRoom`: участник или админ.
+    Здесь стояла своя проверка на `memberRole`, и админ читал книгу, но не видел
+    её комментариев. Расхождение между проверками доступа хуже любого отдельного
+    решения: при разборе невозможно понять, что имелось в виду.
+  */
+  it('админ читает комментарии чужой комнаты, посторонний — нет', async () => {
+    const owner = await createTestUser();
+    const admin = await createTestUser({ role: 'admin' });
+    const stranger = await createTestUser();
+    const { roomId } = await createTestRoom({ ownerId: owner.user.id });
+    const bookId = await createBook(roomId);
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/books/${bookId}/comments`,
+      headers: auth(owner.token),
+      payload: { text: 'Комментарий', bookFileKind: 'text', anchor: TEXT_ANCHOR },
+    });
+
+    const byAdmin = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/${roomId}/books/${bookId}/comments`,
+      headers: auth(admin.token),
+    });
+    expect(byAdmin.statusCode).toBe(200);
+    expect(byAdmin.json().comments).toHaveLength(1);
+
+    const byStranger = await app.inject({
+      method: 'GET',
+      url: `/api/rooms/${roomId}/books/${bookId}/comments`,
+      headers: auth(stranger.token),
+    });
+    expect(byStranger.statusCode).toBe(403);
+  });
+
+  it('админ реагирует в чужой комнате', async () => {
+    const owner = await createTestUser();
+    const admin = await createTestUser({ role: 'admin' });
+    const { roomId } = await createTestRoom({ ownerId: owner.user.id });
+    const bookId = await createBook(roomId);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/rooms/${roomId}/books/${bookId}/comments`,
+      headers: auth(owner.token),
+      payload: { text: 'Комментарий', bookFileKind: 'text', anchor: TEXT_ANCHOR },
+    });
+    const id = created.json().comment.id as string;
+
+    const byAdmin = await app.inject({
+      method: 'POST',
+      url: `/api/comments/${id}/reactions`,
+      headers: auth(admin.token),
+      payload: { emoji: '🎉' },
+    });
+
+    /*
+      Реакция — не только код ответа: проверяется, что она записалась. Иначе
+      проверка «200» прошла бы и при молча потерянной реакции.
+    */
+    expect(byAdmin.statusCode).toBe(200);
+    expect(byAdmin.json().active).toBe(true);
+    expect(await testDb.reaction.count({ where: { commentId: id } })).toBe(1);
+  });
+});

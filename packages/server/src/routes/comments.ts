@@ -4,7 +4,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import { prisma } from '../db/client.js';
 import { AppError } from '../lib/errors.js';
 import { requireAuth, currentUser } from '../auth/guards.js';
-import { memberRole } from '../rooms/membership.js';
+import { canAccessRoom, memberRole } from '../rooms/membership.js';
 import { describeIssues, validateAnchor, type AnyAnchor } from '@rd/shared/anchors';
 import { notify, notifyMany } from '../lib/notify.js';
 import {
@@ -234,19 +234,26 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
   app.addHook('preHandler', requireAuth);
 
   /**
-   * Проверка доступа: книга должна лежать в комнате, и пользователь — быть её
-   * участником.
+   * Проверка доступа: книга должна лежать в комнате, и пользователь — иметь доступ
+   * к комнате.
    *
-   * Именно участником, а не «любым авторизованным»: комната приватная, и её
-   * комментарии — её содержимое. Случайно знающий идентификатор книги не
-   * должен открывать переписку.
+   * Именно участником или админом, а не «любым авторизованным»: комната
+   * приватная, и её комментарии — её содержимое. Случайно знающий идентификатор
+   * книги не должен открывать переписку.
+   *
+   * ─── Почему через `canAccessRoom`, а не своей проверкой ─────────────────────
+   *
+   * Здесь стояла своя проверка на `memberRole`, и она отличалась от соседних:
+   * админ читал книгу, но не видел её комментариев. Расхождение между
+   * проверками доступа хуже любого отдельного решения — при разборе невозможно
+   * понять, что имелось в виду. Правило одно и живёт в `canAccessRoom`.
    */
   async function requireRoomAndBook(
     roomId: string,
     bookId: string,
-    userId: string,
+    user: { id: string; role: string },
   ): Promise<void> {
-    if ((await memberRole(prisma, roomId, userId)) === null) {
+    if (!(await canAccessRoom(prisma, roomId, user)).ok) {
       throw AppError.forbidden('Комментарии доступны только участникам комнаты');
     }
     const link = await prisma.roomBook.findUnique({
@@ -263,7 +270,7 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
     const { roomId, bookId } = roomBookParams.parse(request.params);
     const query = listQuery.parse(request.query ?? {});
 
-    await requireRoomAndBook(roomId, bookId, me.id);
+    await requireRoomAndBook(roomId, bookId, me);
 
     // Страница считается по корневым: `parentId IS NULL`. Ответы приезжают
     // вместе со своими корневыми.
@@ -373,7 +380,7 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
     const me = currentUser(request);
     const { roomId, bookId } = roomBookParams.parse(request.params);
 
-    await requireRoomAndBook(roomId, bookId, me.id);
+    await requireRoomAndBook(roomId, bookId, me);
 
     const rows = await prisma.$queryRaw<
       Array<{
@@ -420,7 +427,7 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
     const me = currentUser(request);
     const { roomId, bookId } = roomBookParams.parse(request.params);
 
-    await requireRoomAndBook(roomId, bookId, me.id);
+    await requireRoomAndBook(roomId, bookId, me);
 
     // Проверка до разбора тела: иначе zod сказал бы «лишний ключ», и человек
     // не понял бы, что `anchorType` вообще нельзя присылать.
@@ -598,8 +605,12 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
     });
     if (comment === null) throw AppError.notFound('Комментарий');
 
-    const role = await memberRole(prisma, comment.roomId, me.id);
-    if (role === null) throw AppError.forbidden('Реагировать могут только участники комнаты');
+    // То же правило, что у остальных маршрутов комнаты: участник или админ.
+    // Своя проверка на `memberRole` отличалась от соседних, и админ не мог
+    // поставить реакцию там, где мог читать.
+    if (!(await canAccessRoom(prisma, comment.roomId, me)).ok) {
+      throw AppError.forbidden('Реагировать могут только участники комнаты');
+    }
 
     const existing = await prisma.reaction.findUnique({
       where: { commentId_userId_emoji: { commentId: id, userId: me.id, emoji: body.emoji } },
