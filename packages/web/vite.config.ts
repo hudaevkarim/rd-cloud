@@ -35,6 +35,15 @@ import { WORKSPACE_ALIASES } from './vite.aliases.js';
  * странице комнаты — «0 человек читает сейчас» при том, что человек в комнате
  * был. Тесты сокетов это не видели: `socket-test.mts` ходит прямо на `:3000` и
  * прокси Vite не проходит.
+ *
+ * ─── Про `/files` ────────────────────────────────────────────────────────────
+ *
+ * Раздача файлов идёт по отдельному префиксу, а не через `/api`, и её нельзя
+ * забывать в прокси. Обложка приходит на `<img src="/api/books/:id/cover">`, а
+ * тот отвечает переадресацией на `/files/covers/...` — и вот этот второй запрос
+ * без правила прокси уходил в клиентское приложение, которое отдавало свой
+ * `index.html`. В `<img>` это выглядело как «картинка не загрузилась», причём
+ * без единой ошибки в консоли: браузер получил валидный HTML.
  */
 const API_TARGET = process.env.VITE_API_TARGET ?? 'http://127.0.0.1:3000';
 
@@ -48,6 +57,9 @@ export default defineConfig({
       '/api': { target: API_TARGET, changeOrigin: true },
       '/socket.io': { target: API_TARGET, changeOrigin: true, ws: true },
       '/health': { target: API_TARGET, changeOrigin: true },
+      // Обложки и скачивание: тот же origin, что и у `/api`, иначе вместо
+      // картинки придёт HTML приложения — тихо и без ошибки в консоли.
+      '/files': { target: API_TARGET, changeOrigin: true },
     },
   },
 

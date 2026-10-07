@@ -223,6 +223,38 @@ describe('фильтры', () => {
     // просто написал фамилию иначе.
     expect(screen.getByText(/снимите фильтр по автору/i)).toBeInTheDocument();
   });
+
+  it('пустой результат под фильтром аудио не говорит, что каталог пуст', async () => {
+    // В каталоге есть книга с аудио, поэтому для пустого результата под
+    // фильтром она не годится: фильтр оставил бы её на месте.
+    catalog = [book(), book({ id: 'b3', title: 'Преступление и наказание', author: 'Ф. М. Достоевский' })];
+
+    const u = userEvent.setup();
+    renderCatalog();
+    await screen.findByText('Евгений Онегин');
+
+    await u.click(screen.getByLabelText('Только с аудио'));
+
+    await screen.findByRole('heading', { name: 'Ничего не нашлось' });
+    /*
+      Самое вредное здесь — сказать «каталог пуст». Человек снял галочку, увидел
+      пустоту и решил бы, что каталога нет вовсе, хотя книг в нём полно.
+    */
+    const hint = screen.getByText(/только с аудио/i, { selector: 'p' });
+    expect(hint).toBeInTheDocument();
+    expect(hint).not.toHaveTextContent(/каталог пока пуст/i);
+    expect(hint).toHaveTextContent(/снимите галочку/i);
+  });
+
+  it('без фильтров пустота означает пустой каталог', async () => {
+    catalog = [];
+    const u = userEvent.setup();
+    renderCatalog();
+
+    expect(await screen.findByRole('heading', { name: 'Ничего не нашлось' })).toBeInTheDocument();
+    // Тут подсказка правильная: фильтров нет, значит каталог действительно пуст.
+    expect(screen.getByText(/Книги добавляет администратор/i)).toBeInTheDocument();
+  });
 });
 
 describe('добавление в комнату', () => {

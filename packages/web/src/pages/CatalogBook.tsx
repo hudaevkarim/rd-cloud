@@ -69,7 +69,7 @@ export function CatalogBookPage() {
             {data.files.map((f) => (
               <span className="badge badge--quiet" key={f.kind}>
                 {f.format.toUpperCase()}
-                {f.durationSec !== null && ` · ${Math.round(f.durationSec / 60)} мин`}
+                {f.durationSec !== null && ` · ${formatDuration(f.durationSec)}`}
               </span>
             ))}
           </div>
@@ -215,4 +215,25 @@ function AddToRoomDialog({
       )}
     </Dialog>
   );
+}
+
+/**
+ * Длительность аудио в подписи к формату.
+ *
+ * Минуты, пока они есть, и секунды, пока минут нет: округление вниз превращало
+ * получасовую запись в «0 мин», а человек, выбирающий между книгами, видел бы
+ * вместо ответа на вопрос «сколько это слушать» — ноль.
+ *
+ * Разделитель — точка, а не двоеточие: это подпись рядом с форматом, а не
+ * время в часах.
+ */
+function formatDuration(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  if (minutes === 0) return `${rounded} с`;
+  // Часы показываем, только когда они есть: «2 ч 5 мин» полезнее, чем «125 мин».
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  if (hours === 0) return `${minutes} мин`;
+  return restMinutes === 0 ? `${hours} ч` : `${hours} ч ${restMinutes} мин`;
 }
