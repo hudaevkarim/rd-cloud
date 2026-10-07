@@ -120,7 +120,30 @@ export function renderBlock(block: EpubBlock, opts: RenderOptions = {}): HTMLEle
   return el;
 }
 
+/**
+ * Проставляет блоку его номер.
+ *
+ * ─── Почему номер проверяется, а не просто подставляется ─────────────────────
+ *
+ * Атрибут `data-block` — не украшение: по нему ищутся якоря комментариев
+ * (`locateSelection` берёт из него `blockIndex`), по нему же читалка
+ * восстанавливает позицию. Всё это работает, только если номер есть.
+ *
+ * Раньше здесь стояло `${block.index}`, и блок без номера тихо получал
+ * `data-block="undefined"`. Дальше `Number("undefined")` даёт `NaN`, комментарий
+ * привязывался к несуществующему месту, а человек видел его в списке и не мог
+ * понять, почему по нему не переходит. Тихая порча якоря хуже падения: её
+ * замечают через месяц и уже не помнят, что было причиной.
+ *
+ * Поэтому несоответствие поднимается здесь же, на границе с сервером. Падение
+ * видно сразу и указывает, какой блок негоден.
+ */
 function applyBlockMeta(el: HTMLElement, block: EpubBlock, opts: RenderOptions): void {
+  if (!Number.isInteger(block.index) || block.index < 0) {
+    throw new Error(
+      `Блок без номера: data-block нужен для якорей комментариев, получено ${String(block.index)}`,
+    );
+  }
   const attr = opts.blockAttr ?? 'data-block';
   el.setAttribute(attr, `${block.index}`);
 }
