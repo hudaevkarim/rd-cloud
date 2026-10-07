@@ -6,14 +6,12 @@ import { LoginPage } from './pages/Login.js';
 import { LobbyPage } from './pages/Lobby.js';
 import { SearchPage } from './pages/Search.js';
 import { JoinByCode } from './pages/JoinByCode.js';
+import { CatalogPage } from './pages/Catalog.js';
+import { CatalogBookPage } from './pages/CatalogBook.js';
+import { AdminCatalogPage } from './pages/AdminCatalog.js';
 import { RoomView } from './rooms/RoomView.js';
 import { Notifications } from './rooms/Notifications.js';
-import {
-  AdminPage,
-  CatalogPage,
-  ProfilePage,
-  ReaderPage,
-} from './pages/Placeholders.js';
+import { ProfilePage, ReaderPage } from './pages/Placeholders.js';
 
 /**
  * Витрина компонентов грузится отдельно и только в разработке.
@@ -95,6 +93,7 @@ export function App() {
           <Route path="/rooms/:roomId" element={<RoomRoute />} />
           <Route path="/rooms/:roomId/books/:bookId" element={<ReaderRoute />} />
           <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/catalog/:bookId" element={<CatalogBookPage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/profile" element={<ProfilePage />} />
 
@@ -102,7 +101,7 @@ export function App() {
               Вложенный `RequireAdmin` дублирует проверку сессии, но это
               один вызов хука и никаких лишних запросов. */}
           <Route element={<RequireAdmin />}>
-            <Route path="/admin" element={<AdminPage />} />
+            <Route path="/admin" element={<AdminCatalogPage />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

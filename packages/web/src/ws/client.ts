@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
-import type { WireComment, WireNotification } from '../api/types.js';
+import type { BookEvent, WireComment, WireNotification } from '../api/types.js';
 
 /**
  * Клиент сокетов.
@@ -76,6 +76,24 @@ export interface ServerToClient {
     userId: string;
   }) => void;
   'notification:new': (payload: WireNotification) => void;
+  /**
+   * Книга появилась в комнате: загружена файлом или добавлена из каталога.
+   *
+   * Одно событие на оба пути. `source` нужен тосту: «Борис загрузил книгу» и
+   * «Борис добавил книгу из каталога» — разные фразы, а набор книги один.
+   */
+  'book:added': (payload: {
+    roomId: string;
+    book: BookEvent;
+    addedBy: { id: string; displayName: string };
+    source: 'upload' | 'catalog';
+  }) => void;
+  'book:removed': (payload: { roomId: string; bookId: string }) => void;
+  /** Книга добавлена в общий каталог. Всем подключённым, не в комнату. */
+  'catalog:book:added': (payload: {
+    book: BookEvent;
+    addedBy: { id: string; displayName: string };
+  }) => void;
 }
 
 export type TypedSocket = Socket<ServerToClient, ClientToServer>;

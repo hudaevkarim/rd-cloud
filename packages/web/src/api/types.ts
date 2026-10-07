@@ -146,12 +146,52 @@ export interface BookSummary {
   title: string;
   author: string;
   description: string | null;
+  /** Биография автора. Заполняется для книг каталога. */
+  authorBio: string | null;
   coverUrl: string | null;
   isCatalog: boolean;
   language: string | null;
   year: number | null;
+  /** Кто загрузил: по нему решается, может ли участник убрать книгу из комнаты. */
+  uploadedById: string | null;
   createdAt: string;
+  /** Короткий ответ на вопрос «что открывать», без разбора списка файлов. */
+  hasText: boolean;
+  hasAudio: boolean;
   files: BookFileSummary[];
+}
+
+/**
+ * Книга в том виде, в каком приходит в событии `book:added`.
+ *
+ * Уже и есть `BookSummary`, но событие летит каждому подписчику комнаты, и
+ * тянуть в нём список файлов с адресами и флагами разбора значило бы отправлять
+ * лишнее каждому. Поэтому событие несёт шесть полей, а не `files`.
+ */
+export interface BookEvent {
+  id: string;
+  title: string;
+  author: string;
+  coverUrl: string | null;
+  hasText: boolean;
+  hasAudio: boolean;
+}
+
+/** Найденная книга в одной из моих комнат. */
+export interface BookHitInRoom extends BookEvent {
+  /** Комната нужна для перехода: книга может лежать в нескольких сразу. */
+  roomId: string;
+  roomName: string;
+}
+
+/** Найденная книга в общем каталоге. */
+export interface BookHitInCatalog extends BookEvent {
+  isCatalog: true;
+}
+
+export interface BookSearchResult {
+  inRooms: BookHitInRoom[];
+  catalog: BookHitInCatalog[];
 }
 
 /** Оглавление, отдаваемое сервером как есть: `derived/<id>/index.json`. */

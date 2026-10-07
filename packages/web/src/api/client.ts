@@ -4,6 +4,7 @@ import type {
   ApiErrorBody,
   BookIndex,
   BookSummary,
+  BookSearchResult,
   ChapterBlock,
   CommentCounts,
   CommentPage,
@@ -62,6 +63,19 @@ let onUnauthorized: UnauthorizedHandler | null = null;
 
 export function setUnauthorizedHandler(fn: UnauthorizedHandler | null): void {
   onUnauthorized = fn;
+}
+
+/**
+ * Сообщить, что сервер отверг сессию.
+ *
+ * Отдельная функция, потому что 401 приходит из двух мест: `request` и загрузка
+ * файла через XHR, у которой свой транспорт. Повторять проверку в обоих значило
+ * бы написать одно и то же дважды, и забытая копия обернулась бы не ошибкой в
+ * обработчике запроса, а тихим «сессия пропала, интерфейс не заметил».
+ */
+export function notifyUnauthorized(): void {
+  bearer = null;
+  onUnauthorized?.();
 }
 
 export class ApiError extends Error {
@@ -296,6 +310,26 @@ export const books = {
     return (await request<{ book: BookSummary }>(`/books/${id}`)).book;
   },
 
+  /**
+   * Адрес файла книги.
+   *
+   * Два шага, а не прямая ссылка: у `/files/**` есть проверка токена, а книга
+   * может лежать в закрытой комнате. Адрес сервер отдаёт только после того, как
+   * убедился, что человек в комнате.
+   *
+   * Расширение приходит вместе с адресом: оно нужно для имени скачанного файла,
+   * а разбирать путь на клиенте — значит зависеть от того, как он устроен.
+   */
+  async fileInfo(
+    id: string,
+    kind: 'text' | 'audio',
+  ): Promise<{ url: string; fileNameExtension: string }> {
+    const body = await request<{ url: string; mimeType: string }>(`/books/${id}/file${query({ kind })}`);
+    const tail = body.url.split('/').pop() ?? '';
+    const dot = tail.lastIndexOf('.');
+    return { url: body.url, fileNameExtension: dot === -1 ? '' : tail.slice(dot + 1) };
+  },
+
   /** Оглавление. Отдаётся как есть, без обёртки, — клиент кэширует им. */
   async index(bookId: string, signal?: AbortSignal): Promise<BookIndex> {
     return request(`/books/${bookId}/index.json`, { signal });
@@ -307,18 +341,55 @@ export const books = {
   },
 
   /**
-   * Загрузка файла в комнату.
+   * Добавить книгу из каталога в комнату.
+   *
+   * `added: false` — не ошибка: книга уже в комнате, и второй раз её добавлять
+   * незачем. Интерфейс различает это и говорит «уже там», а не «ошибка».
+   */
+  async addFromCatalog(roomId: string, catalogBookId: string): Promise<{ added: boolean }> {
+    return request(`/rooms/${roomId}/books/from-catalog`, {
+      method: 'POST',
+      body: { catalogBookId },
+    });
+  },
+
+  /**
+   * Поиск книг: в своих комнатах и в каталоге.
+   *
+   * Один адрес, а не «взять список комнат, потом запросить каждую»: при пяти
+   * комнатах это шесть запросов на каждый ввод, и каждый ходил бы по книгам этой
+   * комнаты. Здесь одна выборка отдаёт обе секции.
+   *
+   * `signal` обязателен по той же причине, что и у поиска комнат: без отмены
+   * медленный ответ на «ан» перезаписал бы точный на «анна».
+   */
+  searchBooks(q: string, signal?: AbortSignal): Promise<BookSearchResult> {
+    return request(`/books/search${query({ q })}`, { signal });
+  },
+
+  /**
+   * Загрузка файла в комнату: собирает тело, но не отправляет.
    *
    * Порядок частей обязателен: сервер читает multipart одним проходом и узнаёт
    * `kind` только из полей, пришедших раньше файла. `FormData` сохраняет
    * порядок добавления, поэтому поля добавляются первыми — иначе сервер откажет
    * с 400.
+   *
+   * Возвращается тело, а не выполняется запрос: отправка идёт через
+   * `uploadWithProgress`, у которой есть прогресс и отмена, а у `fetch` их нет.
    */
-  async upload(
-    roomId: string,
+  buildUploadForm(
     file: File,
-    meta: { kind: 'text' | 'audio'; format: string; title: string; author: string; description?: string; language?: string; year?: number },
-  ): Promise<BookSummary> {
+    meta: {
+      kind: 'text' | 'audio';
+      format: string;
+      title: string;
+      author: string;
+      description?: string;
+      language?: string;
+      year?: number;
+    },
+  ): FormData {
     const form = new FormData();
     form.append('kind', meta.kind);
     form.append('format', meta.format);
@@ -329,33 +400,59 @@ export const books = {
     if (meta.year !== undefined) form.append('year', String(meta.year));
     form.append('file', file, file.name);
 
-    return (await request<{ book: BookSummary }>(`/rooms/${roomId}/books/upload`, {
-      method: 'POST',
-      formData: form,
-    })).book;
+    return form;
   },
 
-  async addFromCatalog(roomId: string, catalogBookId: string): Promise<{ added: boolean }> {
-    return request(`/rooms/${roomId}/books/from-catalog`, {
-      method: 'POST',
-      body: { catalogBookId },
-    });
-  },
-
-  async remove(id: string): Promise<void> {
-    await request(`/books/${id}`, { method: 'DELETE' });
+  /**
+   * Убрать книгу из комнаты.
+   *
+   * Снимается связь, а сама книга остаётся: книга из каталога принадлежит не
+   * этой комнате, и удаление здесь снесло бы её у всех, кто её добавил.
+   */
+  async removeFromRoom(roomId: string, bookId: string): Promise<void> {
+    await request(`/rooms/${roomId}/books/${bookId}`, { method: 'DELETE' });
   },
 };
 
-// ─── Каталог ──────────────────────────────────────────────────────────────────
+/**
+ * Фильтры каталога.
+ *
+ * `author` и `hasAudio` — не украшение: без них список классики на двести книг
+ * пришлось бы просматривать глазами, а человек ищет «всё Пушкина, где есть
+ * аудио», и это два конкретных вопроса.
+ */
+export interface CatalogFilters {
+  q?: string;
+  author?: string;
+  hasAudio?: boolean;
+}
 
 export const catalog = {
-  async list(params: { q?: string; hasAudio?: boolean } = {}): Promise<BookSummary[]> {
-    return (
-      await request<{ books: BookSummary[] }>(
-        `/catalog${query({ q: params.q, hasAudio: params.hasAudio })}`,
-      )
-    ).books;
+  async list(params: CatalogFilters = {}): Promise<BookSummary[]> {
+    const search = query({
+      q: params.q,
+      author: params.author,
+      // Флаг передаётся строкой `true`, а не булевым: `query` отбрасывает
+      // `undefined`, а `String(false)` дало бы подстроку «false» — и фильтр
+      // оказался бы включён вместо выключенного.
+      hasAudio: params.hasAudio === true ? 'true' : undefined,
+    });
+    return (await request<{ books: BookSummary[] }>(`/catalog${search}`)).books;
+  },
+
+  async get(id: string): Promise<BookSummary> {
+    return (await request<{ book: BookSummary }>(`/catalog/${id}`)).book;
+  },
+
+  /**
+   * Убрать книгу из каталога.
+   *
+   * Отдельный метод, а не `books.remove`: тот сносит книгу целиком, а этот снимает
+   * флаг каталога и, если книга нигде не лежит, удаляет её с файлами. Два разных
+   * действия не должны выглядеть как одно.
+   */
+  async removeFromCatalog(id: string): Promise<{ deleted: boolean }> {
+    return request(`/admin/catalog/${id}`, { method: 'DELETE' });
   },
 };
 

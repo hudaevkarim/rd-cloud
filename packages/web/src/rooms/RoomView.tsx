@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { plural, rooms as roomsApi } from '../api/client.js';
+import { plural, books as booksApi, rooms as roomsApi } from '../api/client.js';
 import type {
+  BookSummary,
   JoinRequest,
   Room,
   RoomMember,
@@ -17,8 +18,9 @@ import { useToast } from '../components/ui/Toast.js';
 import { useAuth } from '../auth/auth-context.js';
 import { Avatar } from './Avatar.js';
 import { messageOf, useQuery, type QueryState } from './room-queries.js';
-import { useRoomSocket } from './useRoomSocket.js';
+import { useRoomSocket, type BookAddedPayload } from './useRoomSocket.js';
 import { isEvicted, isJoinRequest } from './Notifications.js';
+import { BooksTab } from '../books/BooksTab.js';
 
 /**
  * Страница комнаты.
@@ -69,6 +71,17 @@ export function RoomView({ roomId }: { roomId: string }) {
   */
   const requests = useQuery<JoinRequest[]>(async () => roomsApi.joinRequests(roomId), [roomId]);
 
+  /*
+    Книги запрашиваются здесь, а не внутри вкладки.
+
+    Причина та же, что с заявками: список нужен в двух местах — во вкладке и как
+    счётчик в шапке, — а два независимых запроса означали бы, что одно из них
+    показывает старое. Здесь, кроме того, живёт подписка на `book:added` и
+    `book:removed`: внутри вкладки она снималась бы при уходе на «Участники», и
+    книга, добавленная в этот момент, осталась бы незамеченной.
+  */
+  const books = useQuery<BookSummary[]>(async () => booksApi.listInRoom(roomId), [roomId]);
+
   const onPresenceChanged = useCallback(
     (entry: { roomId: string; userId: string }) => {
       // Чужая комната: события приходят по всем комнатам, где мы состоим, и в
@@ -114,7 +127,42 @@ export function RoomView({ roomId }: { roomId: string }) {
     [roomId, navigate, requests.reload],
   );
 
-  const socket = useRoomSocket({ onNotification, onPresenceChanged, onPresenceLeft });
+  /*
+    События книг — сигнал «перечитай список».
+
+    Не вставлять книгу в список по событию: в событии шесть полей, а строке нужны
+    ещё формат файла, размер и признак разбора. Без второго запроса строка показала
+    бы выдуманные сведения, а по F5 всё встало бы на место — то есть человек видел
+    бы разные данные в зависимости от того, обновлял он страницу или нет.
+  */
+  const onBookAdded = useCallback(
+    (payload: BookAddedPayload) => {
+      if (payload.roomId !== roomId) return;
+      books.reload();
+      toast.info(
+        payload.source === 'upload'
+          ? `${payload.addedBy.displayName} загрузил(а) «${payload.book.title}»`
+          : `${payload.addedBy.displayName} добавил(а) «${payload.book.title}» из каталога`,
+      );
+    },
+    [roomId, books.reload, toast],
+  );
+
+  const onBookRemoved = useCallback(
+    (payload: { roomId: string; bookId: string }) => {
+      if (payload.roomId !== roomId) return;
+      books.reload();
+    },
+    [roomId, books.reload],
+  );
+
+  const socket = useRoomSocket({
+    onNotification,
+    onPresenceChanged,
+    onPresenceLeft,
+    onBookAdded,
+    onBookRemoved,
+  });
 
   /**
    * Флаг «мы вошли» живёт в ref, а не в состоянии.
@@ -252,7 +300,7 @@ export function RoomView({ roomId }: { roomId: string }) {
 
       <Rule />
 
-      {tab === 'books' && <BooksTab room={data} />}
+      {tab === 'books' && <BooksTab room={data} books={books} reloadBooks={books.reload} />}
       {tab === 'members' && <MembersTab room={data} online={online} />}
       {tab === 'requests' && <RequestsTab roomId={roomId} requests={requests} />}
     </div>
@@ -299,23 +347,6 @@ function RoomTabs({
           )}
         </button>
       ))}
-    </div>
-  );
-}
-
-/** Книги. Заглушка до подэтапа 7.3 — здесь ей и место. */
-function BooksTab({ room }: { room: Room }) {
-  return (
-    <div className="empty">
-      <h2 className="empty__title">Книг пока нет</h2>
-      <p className="empty__text">
-        {room._count.books === 0
-          ? 'Загрузка книг появится в следующем подэтапе. Пока комната пустая, но в неё уже можно звать людей по ссылке.'
-          : `В комнате ${plural(room._count.books, 'книга', 'книги', 'книг')}. Список пока не показываем: загрузка придёт в подэтапе 7.3.`}
-      </p>
-      <Button variant="ghost" onClick={() => undefined} disabled>
-        Добавить книгу
-      </Button>
     </div>
   );
 }

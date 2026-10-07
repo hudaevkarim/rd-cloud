@@ -82,6 +82,10 @@ beforeEach(() => {
       }
       if (url.endsWith('/members')) return jsonResponse({ members: [] });
       if (url === '/api/rooms/r1') return jsonResponse({ room });
+      // Список книг страница комнаты берёт всегда, а не только на вкладке «Книги».
+      // Без этой строки заглушка ниже вернула бы объект комнаты, и страница
+      // упала бы на несуществующем `books.length`.
+      if (url.endsWith('/books')) return jsonResponse({ books: [] });
       return jsonResponse({});
     }),
   );

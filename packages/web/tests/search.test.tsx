@@ -109,16 +109,21 @@ async function waitForSearch(): Promise<void> {
 const field = (): HTMLInputElement => screen.getByLabelText('Название комнаты') as HTMLInputElement;
 
 describe('вкладки', () => {
-  it('обе вкладки на месте, книги пустые', async () => {
+  it('обе вкладки на месте, книги объясняют, что искать', async () => {
     renderSearch();
 
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map((t) => t.textContent)).toEqual(['Комнаты', 'Книги']);
 
-    // Вкладка «Книги» заведена сейчас, наполнение — в 7.3. Иначе потом пришлось бы
-    // переделывать навигацию.
     await userEvent.setup().click(screen.getByRole('tab', { name: 'Книги' }));
-    expect(screen.getByRole('heading', { name: 'Скоро' })).toBeInTheDocument();
+
+    /*
+      Заглушки «Скоро» больше нет: вкладка рабочая, и пустое состояние должно
+      объяснять правило — не меньше двух букв. Иначе человек набрал бы «П»,
+      увидел пустоту и решил бы, что поиск сломан.
+    */
+    expect(screen.getByRole('heading', { name: 'Что ищем?' })).toBeInTheDocument();
+    expect(screen.getByText(/хотя бы две буквы/i)).toBeInTheDocument();
   });
 
   it('введённое сохраняется при переключении вкладок', async () => {

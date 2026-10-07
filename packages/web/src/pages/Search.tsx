@@ -1,7 +1,12 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiError, plural, rooms as roomsApi } from '../api/client.js';
-import type { JoinState, RoomSearchHit, WireNotification } from '../api/types.js';
+import { ApiError, books as booksApi, plural, rooms as roomsApi } from '../api/client.js';
+import type {
+  BookSearchResult,
+  JoinState,
+  RoomSearchHit,
+  WireNotification,
+} from '../api/types.js';
 import { Button } from '../components/ui/Button.js';
 import { Input } from '../components/ui/Input.js';
 import { Label } from '../components/ui/Label.js';
@@ -11,6 +16,7 @@ import { useToast } from '../components/ui/Toast.js';
 import { messageOf, useDebounced, useQuery } from '../rooms/room-queries.js';
 import { useRoomSocket } from '../rooms/useRoomSocket.js';
 import { isMyRequestAnswered } from '../rooms/Notifications.js';
+import { BookCover } from '../books/BookCover.js';
 
 /**
  * Поиск.
@@ -28,6 +34,13 @@ import { isMyRequestAnswered } from '../rooms/Notifications.js';
  * «ан» мог прийти позже, чем на «анна», и список прыгал бы.
  */
 type SearchTab = 'rooms' | 'books';
+
+/**
+ * Минимум для поиска книг. Ровно тот же, что на сервере: правило должно быть
+ * одно, и разные числа на клиенте и на сервере дали бы список, который то
+ * появляется, то исчезает по разным правилам.
+ */
+const MIN_BOOK_QUERY = 2;
 
 const TABS: Array<{ id: SearchTab; label: string }> = [
   { id: 'rooms', label: 'Комнаты' },
@@ -79,16 +92,146 @@ export function SearchPage() {
         autoFocus
       />
 
-      {tab === 'rooms' ? (
-        <RoomsResults query={query} />
-      ) : (
-        <div className="empty">
-          <h2 className="empty__title">Скоро</h2>
-          <p className="empty__text">
-            Поиск по книгам придёт вместе с загрузкой книг в 7.3. Здесь будут
-            находиться книги из общего каталога и добавленные в комнаты.
-          </p>
-        </div>
+      {tab === 'rooms' ? <RoomsResults query={query} /> : <BooksResults query={query} />}
+    </div>
+  );
+}
+
+/**
+ * Результаты по книгам.
+ *
+ * ─── Две секции, а не один список ────────────────────────────────────────────
+ *
+ * Книга из моей комнаты и книга из каталога требуют разных действий: первую
+ * открывают, вторую сначала надо добавить. Смешанные в один список они читались бы
+ * как «всё уже можно открыть», а половина строк была бы ложью.
+ *
+ * ─── Сортировка ──────────────────────────────────────────────────────────────
+ *
+ * По дате добавления, а не по релевантности: человек ищет «Пушкина» и хочет увидеть
+ * его книги, а у сервера нет оценки совпадения, и выдумывать её на клиенте — значит
+ * показывать один из двадцати результатов первым по какому-то своему правилу.
+ * Порядок сервер отдаёт готовым.
+ */
+function BooksResults({ query }: { query: string }) {
+  const results = useQuery<BookSearchResult>(
+    async (signal) =>
+      query.length < MIN_BOOK_QUERY ? { inRooms: [], catalog: [] } : booksApi.searchBooks(query, signal),
+    [query],
+  );
+
+  // Две буквы — тот же минимум, что и на сервере: на одной букве выдача совпала бы
+  // почти со всем, и человек получил бы список, в котором ничего не выделяется.
+  if (query.length < MIN_BOOK_QUERY) {
+    return (
+      <div className="empty">
+        <h2 className="empty__title">Что ищем?</h2>
+        <p className="empty__text">
+          Введите название или фамилию — хотя бы две буквы. Показываются книги из
+          ваших комнат и из общего каталога.
+        </p>
+      </div>
+    );
+  }
+
+  if (results.status === 'loading') {
+    return (
+      <div className="page__center">
+        <Spinner size={20} label="Ищем книги" />
+      </div>
+    );
+  }
+
+  if (results.status === 'error') {
+    return (
+      <div className="empty">
+        <p className="empty__text">{results.error}</p>
+        <Button variant="ghost" onClick={results.reload}>
+          Попробовать снова
+        </Button>
+      </div>
+    );
+  }
+
+  const { inRooms, catalog: hits } = results.data;
+
+  if (inRooms.length === 0 && hits.length === 0) {
+    return (
+      <div className="empty">
+        <h2 className="empty__title">Ничего не нашлось</h2>
+        <p className="empty__text">
+          {`Ни в ваших комнатах, ни в каталоге нет книг с «${query}». Проверьте раскладку: поиск идёт по названию и автору.`}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="booksections">
+      {inRooms.length > 0 && (
+        <section className="booksection">
+          <h2 className="booksection__title label">В моих комнатах</h2>
+          <ul className="rows">
+            {inRooms.map((hit) => (
+              <li className="rows__item" key={`${hit.roomId}-${hit.id}`}>
+                <div className="hitrow">
+                  <BookCover coverUrl={hit.coverUrl} author={hit.author} title={hit.title} size="sm" />
+                  <div className="hitrow__body">
+                    <Link className="hitrow__name link" to={`/rooms/${hit.roomId}/books/${hit.id}`}>
+                      {hit.title}
+                    </Link>
+                    <span className="hitrow__meta label label-xs">
+                      {hit.author} · {hit.roomName}
+                    </span>
+                  </div>
+                  <span className="hitrow__action">
+                    {hit.hasText ? (
+                      <Link className="btn btn--ghost" to={`/rooms/${hit.roomId}/books/${hit.id}`}>
+                        Читать
+                      </Link>
+                    ) : (
+                      <span className="hitrow__notready" title="Плеер — подэтап 7.5">
+                        Аудио
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {hits.length > 0 && (
+        <section className="booksection">
+          <h2 className="booksection__title label">В каталоге</h2>
+          <ul className="rows">
+            {hits.map((hit) => (
+              <li className="rows__item" key={hit.id}>
+                <div className="hitrow">
+                  <BookCover coverUrl={hit.coverUrl} author={hit.author} title={hit.title} size="sm" />
+                  <div className="hitrow__body">
+                    {/*
+                      Клик ведёт на страницу книги, а не сразу в читалку: книгу из
+                      каталога сначала надо добавить в комнату, а для этого нужно
+                      знать, что это за книга. Плюс оттуда есть описание и биография
+                      автора.
+                    */}
+                    <Link className="hitrow__name link" to={`/catalog/${hit.id}`}>
+                      {hit.title}
+                    </Link>
+                    <span className="hitrow__meta label label-xs">{hit.author}</span>
+                  </div>
+                  <span className="hitrow__action">
+                    <Link className="btn btn--ghost" to={`/catalog/${hit.id}`}>
+                      Открыть
+                    </Link>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

@@ -101,6 +101,11 @@ function respondByUrl(url: string): unknown {
 
   if (url.endsWith('/join-requests')) return { requests: [] };
   if (url.endsWith('/members')) return { members: [] };
+  // Список книг страница комнаты берёт всегда. Без этой строки маршрут ниже
+  // вернул бы объект комнаты, и страница упала бы на несуществующем
+  // `books.length`.
+  if (url.endsWith('/books')) return { books: [] };
+  if (url === '/api/catalog' || url.startsWith('/api/catalog?')) return { books: [] };
 
   if (url.includes('/api/rooms/')) {
     return {
@@ -240,9 +245,13 @@ describe('админский маршрут', () => {
   it('администратора пускает', async () => {
     renderApp('/admin', ADMIN);
 
+    // Заголовок настоящий, а не «Админка» из заглушки: проверка защиты должна
+    // убедиться, что открылась именно админская страница, а не любая с
+    // заголовком-заглушкой.
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Админка' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Каталог' })).toBeInTheDocument();
     });
+    expect(screen.getByText('АДМИНИСТРИРОВАНИЕ')).toBeInTheDocument();
   });
 });
 

@@ -8,7 +8,7 @@ import {
 } from '../ws/client.js';
 import { useAuth } from '../auth/auth-context.js';
 import { getToken } from '../api/client.js';
-import type { WireNotification } from '../api/types.js';
+import type { BookEvent, WireNotification } from '../api/types.js';
 
 /**
  * Подписка на сокет приложения.
@@ -35,8 +35,28 @@ export interface SocketHandlers {
   onNotification?: (note: WireNotification) => void;
   onPresenceChanged?: (entry: PresenceEntry) => void;
   onPresenceLeft?: (payload: { userId: string; roomId: string }) => void;
+  /**
+   * Книга появилась в комнате.
+   *
+   * Событие — сигнал «перечитай список», а не источник правды: в нём шесть полей,
+   * а строке списка нужны ещё формат файла, размер и признак разбора. Поэтому
+   * обработчик вызывает перезапрос, и строка никогда не показывает выдуманные
+   * сведения.
+   */
+  onBookAdded?: (payload: BookAddedPayload) => void;
+  onBookRemoved?: (payload: { roomId: string; bookId: string }) => void;
+  /** Книга добавлена в общий каталог. Страница каталога перечитывает список. */
+  onCatalogBookAdded?: (payload: { book: BookEvent; addedBy: { id: string; displayName: string } }) => void;
   /** Сокет недоступен: токен отвергнут или сеть легла. */
   onUnreachable?: (state: 'unauthorized' | 'error', message: string) => void;
+}
+
+/** Нагрузка `book:added`. Одно событие на загрузку и на добавление из каталога. */
+export interface BookAddedPayload {
+  roomId: string;
+  book: BookEvent;
+  addedBy: { id: string; displayName: string };
+  source: 'upload' | 'catalog';
 }
 
 /**
@@ -76,6 +96,9 @@ export function useRoomSocket(handlers: SocketHandlers = {}): TypedSocket | null
       on(socket, 'notification:new', (note) => ref.current.onNotification?.(note)),
       on(socket, 'presence:changed', (entry) => ref.current.onPresenceChanged?.(entry)),
       on(socket, 'presence:left', (payload) => ref.current.onPresenceLeft?.(payload)),
+      on(socket, 'book:added', (payload) => ref.current.onBookAdded?.(payload)),
+      on(socket, 'book:removed', (payload) => ref.current.onBookRemoved?.(payload)),
+      on(socket, 'catalog:book:added', (payload) => ref.current.onCatalogBookAdded?.(payload)),
     ];
 
     const onError = (error: Error & { message?: string }): void => {

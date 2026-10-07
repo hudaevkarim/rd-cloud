@@ -1,0 +1,580 @@
+/* ─── Обложка ─────────────────────────────────────────────────────────────── */
+
+/*
+  Обложка — единственное место в списках, где допустимо ненулевое скругление:
+  круг и есть обозначение книги, а плоский квадрат на его месте читался бы как
+  картинка неизвестно чего. Это то же исключение, что у кружка с инициалами в
+  списке участников.
+*/
+.cover {
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--paper-2);
+}
+
+.cover--sm {
+  width: 28px;
+  height: 40px;
+  font-size: 9px;
+  letter-spacing: 0.5px;
+}
+
+.cover--md {
+  width: 40px;
+  height: 56px;
+  font-size: 11px;
+}
+
+.cover--lg {
+  width: 132px;
+  height: 186px;
+  font-size: 28px;
+}
+
+.cover--empty {
+  /* Тон задаётся по хешу имени автора, а не по наличию картинки: у одного автора
+     все книги одного цвета, и в списке это читается как «одна серия». */
+  color: var(--ink-2);
+}
+
+.cover__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ─── Строка книги в комнате ───────────────────────────────────────────────── */
+
+.bookrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.bookrow__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bookrow__title {
+  /* Название обрезано, а не переносится: перенос посреди названия съел бы две
+     строки высоты, а список книг должен помещаться в один взгляд. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookrow__author {
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookrow__badges,
+.catrow__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: 2px;
+}
+
+.bookrow__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bookrow__notready,
+.hitrow__notready {
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  cursor: not-allowed;
+}
+
+/* ─── Меню действий ───────────────────────────────────────────────────────── */
+
+.bookmenu {
+  position: relative;
+}
+
+.bookmenu__button {
+  min-width: var(--touch);
+  min-height: var(--touch);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+  border: 1px solid var(--rule);
+  background: none;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.bookmenu__button:hover {
+  color: var(--ink);
+}
+
+.bookmenu__list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 20;
+  min-width: 200px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+}
+
+.bookmenu__item {
+  display: block;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0 var(--space-3);
+  text-align: left;
+  font-size: var(--text-ui-sm);
+  color: var(--ink);
+  transition: background-color var(--transition);
+}
+
+/* Подсветка при наведении, а не смена цвета: в меню это действие, и человек
+   должен видеть, на что именно наводит. */
+.bookmenu__item:hover {
+  background: var(--paper-2);
+}
+
+.bookmenu__item--danger {
+  color: var(--danger);
+}
+
+/* ─── Шапка вкладки книг ──────────────────────────────────────────────────── */
+
+.books__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) 0 var(--space-2);
+}
+
+.books__count {
+  color: var(--ink-2);
+}
+
+/* ─── Каталог ──────────────────────────────────────────────────────────────── */
+
+.filters {
+  display: grid;
+  grid-template-columns: 2fr 2fr auto;
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch);
+  cursor: pointer;
+}
+
+.checkline input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.catrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.catrow__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.catrow__title {
+  font-size: var(--text-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catrow__author {
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+}
+
+.catrow__desc {
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catrow__action {
+  flex-shrink: 0;
+}
+
+/* ─── Страница книги ──────────────────────────────────────────────────────── */
+
+.bookpage {
+  display: flex;
+  gap: var(--space-6);
+  padding: var(--space-6) 0 var(--space-4);
+}
+
+.bookpage__head {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bookpage__title {
+  font-size: var(--text-title);
+  margin: 0;
+}
+
+.bookpage__author {
+  font-size: var(--text-ui);
+  color: var(--ink-2);
+}
+
+.bookpage__meta {
+  color: var(--ink-2);
+}
+
+.bookpage__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.bookpage__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.bookpage__notready {
+  min-height: var(--touch);
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-3);
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  border: 1px dashed var(--rule);
+  cursor: not-allowed;
+}
+
+/* ─── Текст описания и биографии ──────────────────────────────────────────── */
+
+.prose {
+  max-width: var(--measure);
+  padding: var(--space-4) 0;
+}
+
+.prose__title {
+  font-size: var(--text-ui);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin: 0 0 var(--space-3);
+}
+
+.prose p {
+  margin: 0 0 var(--space-3);
+  line-height: var(--leading-body);
+}
+
+/* ─── Секции результатов поиска ──────────────────────────────────────────── */
+
+.booksections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.booksection__title {
+  color: var(--ink-2);
+  margin: 0 0 var(--space-1);
+}
+
+/* ─── Выбор комнаты ───────────────────────────────────────────────────────── */
+
+.dialog__lead {
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+  margin: 0 0 var(--space-3);
+}
+
+.pickrow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.pickrow__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Бейджи форматов ─────────────────────────────────────────────────────── */
+
+.badge {
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  border: 1px solid var(--rule);
+  padding: 0 var(--space-2);
+}
+
+.badge--quiet {
+  color: var(--ink-2);
+  opacity: 0.75;
+}
+
+/* ─── Зона выбора файла ───────────────────────────────────────────────────── */
+
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  padding: var(--space-4);
+  border: 1px dashed var(--rule);
+  cursor: pointer;
+  transition: border-color var(--transition), background-color var(--transition);
+}
+
+.dropzone:hover,
+.dropzone.is-dragging {
+  border-color: var(--accent);
+  background: var(--paper-2);
+}
+
+.dropzone.is-bad {
+  border-color: var(--danger);
+}
+
+.dropzone__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dropzone__hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+}
+
+.dropzone__formats,
+.filefield__formats {
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.dropzone__file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  text-align: center;
+}
+
+.dropzone__name {
+  font-size: var(--text-ui-sm);
+}
+
+/* ─── Поле файла в админской форме ────────────────────────────────────────── */
+
+.filefield {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+}
+
+.filefield__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.filefield__hint,
+.filefield__file {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+}
+
+.filefield.is-set .filefield__name {
+  color: var(--ink);
+}
+
+.filefield__name {
+  font-size: var(--text-ui-sm);
+}
+
+.filefield__meta {
+  color: var(--ink-2);
+}
+
+.filefield__clear {
+  align-self: flex-end;
+  min-height: var(--touch);
+  font-size: var(--text-label-xs);
+  letter-spacing: var(--track-label-sm);
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-decoration: underline;
+}
+
+/* ─── Прогресс ────────────────────────────────────────────────────────────── */
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+
+.progress__bar {
+  height: 3px;
+  background: var(--paper-2);
+  overflow: hidden;
+}
+
+.progress__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  /* Только transform: анимировать `width` заставляет браузер пересчитывать
+     раскладку на каждом кадре, а шкала обновляется много раз в секунду. */
+  transform-origin: left center;
+  transition: transform 120ms linear;
+}
+
+.progress__text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-2);
+}
+
+/* ─── Отказ в форме ───────────────────────────────────────────────────────── */
+
+.formproblem {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-ui-sm);
+  color: var(--danger);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.form__hint {
+  color: var(--ink-2);
+  line-height: var(--leading-ui);
+}
+
+.page__hint {
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+  max-width: var(--measure);
+  margin: var(--space-2) 0 0;
+}
+
+/* ─── Узкие экраны ───────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  /* Фильтры в одну колонку: три поля в ряд на 320px не помещаются, а сжатые до
+     третьей ширины поля нечитаемы. */
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .books__head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bookpage {
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  /* Обложка на странице книги уходит в угол: в колонке она съедала бы треть
+     экрана, а описание важнее. */
+  .bookpage__cover .cover--lg {
+    width: 64px;
+    height: 90px;
+    font-size: 16px;
+  }
+
+  .bookrow,
+  .catrow {
+    flex-wrap: wrap;
+  }
+
+  .bookrow__actions,
+  .catrow__action {
+    width: 100%;
+  }
+
+  .bookrow__actions .btn,
+  .catrow__action .btn {
+    flex: 1;
+  }
+}

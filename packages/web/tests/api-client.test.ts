@@ -69,14 +69,10 @@ describe('401', () => {
       vi.fn().mockResolvedValue(errorResponse(413, 'file_too_large', 'Файл больше лимита в 50 МБ')),
     );
 
-    const error = await books
-      .upload('комната', new File(['x'], 'a.epub'), {
-        kind: 'text',
-        format: 'epub',
-        title: 'Книга',
-        author: 'Автор',
-      })
-      .catch((e: unknown) => e);
+    // Загрузка файла ушла на XHR и проверяется отдельно, в `book-upload.test.tsx`.
+    // Здесь важно, что тело ошибки разбирает обычный запрос — тем же кодом, что и
+    // при 500.
+    const error = await books.listInRoom('комната').catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ApiError);
     // Текст с сервера доходит до человека: «500» не говорит ни о чём, а
@@ -154,17 +150,17 @@ describe('выход', () => {
 });
 
 describe('загрузка файла', () => {
-  it('поля идут раньше файла', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ book: { id: 'b1' } })));
-
-    await books.upload('комната', new File(['данные'], 'книга.epub', { type: 'application/epub+zip' }), {
-      kind: 'text',
-      format: 'epub',
-      title: 'Название',
-      author: 'Автор',
-    });
-
-    const form = lastCall()[1].body as FormData;
+  /*
+    Загрузка ушла на XHR: у `fetch` нет прогресса отправки, а файл бывает на два
+    гигабайта. Здесь проверяется только сборка тела — порядок частей и
+    необязательные поля. Сам транспорт проверяется в `book-upload.test.tsx`, где
+    подставлен `XMLHttpRequest`.
+  */
+  it('поля идут раньше файла', () => {
+    const form = books.buildUploadForm(
+      new File(['данные'], 'книга.epub', { type: 'application/epub+zip' }),
+      { kind: 'text', format: 'epub', title: 'Название', author: 'Автор' },
+    );
     const names = [...form.keys()];
 
     // Сервер читает multipart одним проходом и узнаёт `kind` только из полей,
@@ -175,36 +171,47 @@ describe('загрузка файла', () => {
     expect(names).toContain('author');
   });
 
-  it('Content-Type не задаётся вручную', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ book: { id: 'b1' } })));
-
-    await books.upload('комната', new File(['x'], 'a.mp3'), {
-      kind: 'audio',
-      format: 'mp3',
-      title: 'Аудио',
-      author: 'Автор',
-    });
-
-    // Граница multipart ставится браузером. Задать заголовок вручную значило бы
-    // отправить тело без границы, и сервер не смог бы его разобрать.
-    expect(headersOf(lastCall()[1])['content-type']).toBeUndefined();
-  });
-
-  it('пустое необязательное поле не отправляется', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ book: { id: 'b1' } })));
-
-    await books.upload('комната', new File(['x'], 'a.epub'), {
+  it('пустое необязательное поле не отправляется', () => {
+    const form = books.buildUploadForm(new File(['x'], 'a.epub'), {
       kind: 'text',
       format: 'epub',
       title: 'Название',
       author: 'Автор',
     });
 
-    const form = lastCall()[1].body as FormData;
     // Пустая строка в поле означала бы «описание равно пустой строке», а не
     // «описания нет»: сервер их различает.
     expect(form.has('description')).toBe(false);
     expect(form.has('year')).toBe(false);
+    expect(form.has('language')).toBe(false);
+  });
+
+  it('заполненное необязательное поле отправляется', () => {
+    const form = books.buildUploadForm(new File(['x'], 'a.epub'), {
+      kind: 'text',
+      format: 'epub',
+      title: 'Название',
+      author: 'Автор',
+      description: 'Описание',
+      language: 'ru',
+      year: 1869,
+    });
+
+    expect(form.get('description')).toBe('Описание');
+    expect(form.get('language')).toBe('ru');
+    // Год приходит строкой: multipart не умеет числа, и сервер разбирает его из
+    // текста.
+    expect(form.get('year')).toBe('1869');
+  });
+
+  it('Content-Type не задаётся вручную', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ user: null })));
+    await auth.me();
+
+    // Граница multipart ставится браузером. Задать заголовок вручную значило бы
+    // отправить тело без границы, и сервер не смог бы его разобрать. На XHR
+    // заголовок тоже не выставляется — см. `books/upload.ts`.
+    expect(headersOf(lastCall()[1])['content-type']).toBeUndefined();
   });
 });
 

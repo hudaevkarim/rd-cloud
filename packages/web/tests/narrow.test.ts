@@ -41,12 +41,22 @@ function mediaBlock(file: string, query: string): string {
   throw new Error(`Блок ${query} в ${file} не закрыт`);
 }
 
-/** Правила одного селектора внутри блока. */
+/**
+ * Правила одного селектора внутри блока.
+ *
+ * Селектор ищется и в одиночку (`{` сразу после него), и в группе через запятую
+ * (`.a .btn,\n.b .btn {`): группировка здесь обычна, и требование проверки к
+ * одному из её селекторов не должно зависеть от того, с кем он стоял в паре.
+ */
 function rule(block: string, selector: string): string {
-  const at = block.indexOf(`${selector} {`);
+  const own = block.indexOf(`${selector} {`);
+  const grouped = block.search(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,`));
+  const at = own !== -1 ? own : grouped;
   if (at === -1) throw new Error(`Нет правила «${selector}»`);
-  const end = block.indexOf('}', at);
-  return block.slice(at, end + 1);
+
+  const open = block.indexOf('{', at);
+  const end = block.indexOf('}', open);
+  return block.slice(open + 1, end);
 }
 
 describe('узкие экраны', () => {
@@ -117,12 +127,53 @@ describe('узкие экраны', () => {
     expect(rule(block, '.bottomnav__tab')).toContain('letter-spacing: 0');
   });
 
+  it('строка книги переносится, кнопки занимают строку', () => {
+    const block = mediaBlock('books.css', '@media (max-width: 767px)');
+
+    /*
+      Без переноски название сжимается до многоточия почти в ноль, а строка нужна
+      как раз ради названия: человек видел бы список, где половина книг не названа.
+      Кнопки уходят на свою строку и делят её поровну — иначе главное действие
+      оказывалось бы за пределами экрана.
+    */
+    for (const selector of ['.bookrow', '.catrow']) {
+      expect(rule(block, selector), `${selector} должен переноситься`).toContain('flex-wrap: wrap');
+    }
+    expect(rule(block, '.bookrow__actions')).toContain('width: 100%');
+    expect(rule(block, '.catrow__action')).toContain('width: 100%');
+    expect(rule(block, '.bookrow__actions .btn')).toContain('flex: 1');
+  });
+
+  it('фильтры каталога в одну колонку', () => {
+    const block = mediaBlock('books.css', '@media (max-width: 767px)');
+
+    // Поле автора, поле названия и переключатель аудио в ряд на 320px не
+    // помещаются, а сжатые до третьей ширины они нечитаемы.
+    expect(rule(block, '.filters')).toContain('grid-template-columns: 1fr');
+  });
+
+  it('страница книги: обложка уменьшается, а не съедает колонку', () => {
+    const block = mediaBlock('books.css', '@media (max-width: 767px)');
+
+    expect(rule(block, '.bookpage')).toContain('flex-direction: column');
+    // Обложка в угол, а не в треть экрана: описание и биография автора важнее
+    // картинки, которая всё равно маленькая.
+    expect(rule(block, '.bookpage__cover .cover--lg')).toContain('width: 64px');
+  });
+
   it('никакой ширины, которая не поместится на 320px', () => {
     // Строка длиннее экрана не сжимается и даёт горизонтальную прокрутку.
     // Меньшие значения — допустимы, они ничего не ломают.
     const offenders: string[] = [];
 
-    for (const file of ['global.css', 'layout.css', 'rooms.css', 'components.css', 'pages.css']) {
+    for (const file of [
+      'global.css',
+      'layout.css',
+      'rooms.css',
+      'books.css',
+      'components.css',
+      'pages.css',
+    ]) {
       const css = readFileSync(`${STYLES}/${file}`, 'utf8');
       for (const m of css.matchAll(/(^|[;{\s])min-width:\s*(\d+)px/g)) {
         if (Number(m[2]) > 320) offenders.push(`${file}: min-width: ${m[2]}px`);

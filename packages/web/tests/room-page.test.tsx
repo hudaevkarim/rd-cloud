@@ -9,7 +9,7 @@ import { ToastProvider } from '../src/components/ui/Toast.js';
 import { setToken } from '../src/api/client.js';
 import * as wsModule from '../src/ws/client.js';
 import { jsonResponse } from './setup.js';
-import type { JoinRequest, Room, RoomMember } from '../src/api/types.js';
+import type { BookSummary, JoinRequest, Room, RoomMember } from '../src/api/types.js';
 
 /**
  * Страница комнаты.
@@ -25,8 +25,45 @@ let calls: string[] = [];
 let room: Room;
 let members: RoomMember[];
 let requests: JoinRequest[] = [];
+let books: BookSummary[] = [];
 
 const USER = { id: 'u1', username: 'anya', displayName: 'Аня', avatar: null, role: 'user' as const };
+
+/**
+ * Книга для списка.
+ *
+ * `uploadedById` и `hasText` заполнены осмысленно: по первому решается, кому
+ * показывать кнопку уборки, по второму — рисуется ли «Читать».
+ */
+function book(over: Partial<BookSummary> = {}): BookSummary {
+  return {
+    id: 'b1',
+    title: 'Евгений Онегин',
+    author: 'А. С. Пушкин',
+    description: null,
+    authorBio: null,
+    coverUrl: null,
+    isCatalog: false,
+    language: 'ru',
+    year: 1825,
+    uploadedById: 'u2',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    hasText: true,
+    hasAudio: false,
+    files: [
+      {
+        kind: 'text',
+        format: 'epub',
+        fileSize: 1024,
+        mimeType: 'application/epub+zip',
+        durationSec: null,
+        parsed: true,
+        url: '/api/books/b1/file?kind=text',
+      },
+    ],
+    ...over,
+  };
+}
 
 function member(id: string, name: string, role: 'owner' | 'member'): RoomMember {
   return {
@@ -40,6 +77,7 @@ function member(id: string, name: string, role: 'owner' | 'member'): RoomMember 
 beforeEach(() => {
   calls = [];
   requests = [];
+  books = [book()];
   members = [member('u1', 'Аня', 'owner'), member('u2', 'Борис', 'member')];
   room = {
     id: 'r1',
@@ -60,9 +98,17 @@ beforeEach(() => {
       const method = init?.method ?? 'GET';
       calls.push(`${method} ${url}`);
 
+      /*
+        Порядок проверок обязателен: маршруты разбираются по адресу, и общий
+        `includes('/api/rooms')` ниже перехватил бы и `/api/rooms/r1/books` —
+        вернул бы объект комнаты вместо списка книг, и страница упала бы на
+        несуществующем `books.length`. Точные адреса идут первыми.
+      */
       if (url.endsWith('/join-requests') && method === 'GET') return jsonResponse({ requests });
       if (url.endsWith('/members') && method === 'GET') return jsonResponse({ members });
+      if (url.endsWith('/books') && method === 'GET') return jsonResponse({ books });
       if (url.includes('/join-requests') && method === 'POST') return jsonResponse({ ok: true });
+      if (url.includes('/books/') && method === 'DELETE') return jsonResponse({ ok: true });
       if (url === '/api/rooms/r1' && method === 'GET') return jsonResponse({ room });
       if (url.includes('/api/rooms') && method === 'DELETE') return jsonResponse({ ok: true });
       return jsonResponse({});
@@ -245,20 +291,66 @@ describe('вкладки', () => {
     expect(list[0]).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('книга — заглушка', async () => {
+  it('книга — настоящий список: название, автор и бейдж формата', async () => {
     renderRoom();
     await screen.findByRole('heading', { name: 'Классика' });
 
-    expect(screen.getByRole('heading', { name: 'Книг пока нет' })).toBeInTheDocument();
+    expect(await screen.findByText('Евгений Онегин')).toBeInTheDocument();
+    expect(screen.getByText('А. С. Пушкин')).toBeInTheDocument();
+    // Бейдж формата, а не пустоты: человек должен видеть, что это за книга,
+    // не открывая меню.
+    expect(screen.getByText('Текст')).toBeInTheDocument();
+    // «Читать» есть только у книги с текстом.
+    expect(screen.getByRole('link', { name: 'Читать' })).toBeInTheDocument();
   });
 
-it('заглушка книг считает уже добавленные', async () => {
-    // Число книг из ответа показывается даже в заглушке: иначе страница
-    // врала бы, что комната пустая, когда в ней три книги.
-    room._count.books = 3;
+  it('пустой список объясняет, что делать дальше', async () => {
+    books = [];
     renderRoom();
 
-    expect(await screen.findByText(/3 книги/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'В комнате пока нет книг' })).toBeInTheDocument();
+    // Не «ни одной книги» молча: человек должен понять, что можно загрузить
+    // или взять из каталога.
+    expect(screen.getByText(/добавьте из общего каталога/i)).toBeInTheDocument();
+  });
+
+  it('книга с текстом и аудио показывает оба бейджа', async () => {
+    books = [
+      book({
+        id: 'b2',
+        title: 'Анна Каренина',
+        hasAudio: true,
+        files: [
+          {
+            kind: 'text',
+            format: 'epub',
+            fileSize: 1024,
+            mimeType: 'application/epub+zip',
+            durationSec: null,
+            parsed: true,
+            url: '/api/books/b2/file?kind=text',
+          },
+          {
+            kind: 'audio',
+            format: 'mp3',
+            fileSize: 2048,
+            mimeType: 'audio/mpeg',
+            durationSec: 3600,
+            parsed: false,
+            url: '/api/books/b2/file?kind=audio',
+          },
+        ],
+      }),
+    ];
+    renderRoom();
+
+    expect(await screen.findByText('Анна Каренина')).toBeInTheDocument();
+    expect(screen.getByText('Текст')).toBeInTheDocument();
+    expect(screen.getByText('Аудио')).toBeInTheDocument();
+    // Аудио показано текстом с подсказкой, а не мёртвой кнопкой: плеер придёт
+    // в 7.5, и ссылка на него сейчас была бы ссылкой в никуда.
+    expect(screen.queryByRole('link', { name: 'Слушать' })).not.toBeInTheDocument();
+    expect(screen.getByTitle('Плеер — подэтап 7.5')).toBeInTheDocument();
   });
 
   it('участники показываются списком с ролями', async () => {
@@ -353,6 +445,7 @@ describe('выход', () => {
         if (url.endsWith('/leave')) return jsonResponse({ left: true, roomDeleted: false });
         if (url.endsWith('/join-requests')) return jsonResponse({ requests });
         if (url.endsWith('/members')) return jsonResponse({ members });
+        if (url.endsWith('/books')) return jsonResponse({ books });
         if (url === '/api/rooms/r1') return jsonResponse({ room });
         return jsonResponse({});
       }),
@@ -376,6 +469,7 @@ describe('выход', () => {
         if (url.endsWith('/leave')) return jsonResponse({ left: true, roomDeleted: true });
         if (url.endsWith('/join-requests')) return jsonResponse({ requests });
         if (url.endsWith('/members')) return jsonResponse({ members });
+        if (url.endsWith('/books')) return jsonResponse({ books });
         if (url === '/api/rooms/r1') return jsonResponse({ room });
         return jsonResponse({});
       }),
