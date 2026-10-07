@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import {
   resetDb,
   testDb,
 } from './helpers/test-app.js';
+import { logger } from '../src/lib/logger.js';
 
 /**
  * Авторизация на чтение.
@@ -253,6 +254,65 @@ describe('чтение: администратор', () => {
     // Админ и раньше видел чужую комнату; расхождение между проверками доступа
     // хуже, чем само решение. Правило меняется в `canAccessRoom`.
     expect(res.statusCode).toBe(200);
+  });
+
+  it('проход админа попадает в журнал отдельной строкой', async () => {
+    const f = await roomWithBook();
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+    try {
+      await app.inject({
+        method: 'GET',
+        url: f.адреса.глава,
+        headers: auth(f.admin.token),
+      });
+
+      /*
+        Требование было не «админ проходит», а «это видно в журнале отдельным
+        случаем». Молча пропущенный админ в чужой комнате выглядит в логах
+        точь-в-точь как дыра, и при разборе инцидента их не отличить.
+
+        Шпион на самом логгере, а не на `process.stdout`: у pino-pretty вывод
+        уходит в отдельный поток и появляется не сразу, проверка была бы
+        мигающей.
+
+        `event` лежит в первом аргументе — `logger.warn(объект, сообщение)`, —
+        и проверяется первым. Поиск во втором давал пустой результат при
+        полностью верном коде: проверка проходила бы, ничего не утверждая.
+      */
+      const вызовы = warn.mock.calls.filter(
+        (args) => (args[0] as { event?: string } | undefined)?.event === 'room_access_by_admin',
+      );
+      expect(вызовы).toHaveLength(1);
+      expect(вызовы[0]?.[0]).toMatchObject({ roomId: f.roomId, userId: f.admin.user.id });
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('доступ участника в журнал не попадает', async () => {
+    const f = await roomWithBook();
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => logger);
+
+    try {
+      await app.inject({
+        method: 'GET',
+        url: f.адреса.глава,
+        headers: auth(f.reader.token),
+      });
+
+      /*
+        Обратная сторона предыдущей проверки. Если бы строка писалась на любой
+        доступ, она ничего бы не значила: в журнале должно быть видно именно
+        то, что произошло не по правилам.
+      */
+      const вызовы = warn.mock.calls.filter(
+        (args) => (args[0] as { event?: string } | undefined)?.event === 'room_access_by_admin',
+      );
+      expect(вызовы).toHaveLength(0);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('админ всё равно не читает книгу, которой нет в этой комнате', async () => {
