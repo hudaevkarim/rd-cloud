@@ -126,6 +126,19 @@ function RoomRoute() {
   return <RoomView roomId={roomId} />;
 }
 
+/**
+ * Читалка.
+ *
+ * Значения `''` в `useParams` означают, что маршрут не совпал, — то есть адрес
+ * вида `/rooms//books/b1` сюда не дойдёт: `*` перебросит в лобби. Проверки на
+ * пустоту здесь не стоит: она была бы недостижимой, а страховка, которая не
+ * может сработать, защитой не считается.
+ *
+ * Проверка «а вдруг `roomId` придёт пустым» сделана там, где это возможно
+ * на самом деле: адреса запросов в `api/client.ts` собираются строкой, и
+ * пустой сегмент дал бы `/api/rooms//books/…`. Тест на это — в
+ * `tests/api-client.test.ts`.
+ */
 function ReaderRoute() {
   const { roomId = '', bookId = '' } = useParams();
   return <ReaderPage roomId={roomId} bookId={bookId} />;

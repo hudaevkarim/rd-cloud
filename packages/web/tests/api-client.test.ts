@@ -253,9 +253,9 @@ describe('разделы API', () => {
     await rooms.members('r1');
     await rooms.leave('r1');
     await books.listInRoom('r1');
-    await books.get('b1');
-    await books.index('b1');
-    await books.chapter('b1', 3);
+    await books.get('r1', 'b1');
+    await books.index('r1', 'b1');
+    await books.chapter('r1', 'b1', 3);
     await catalog.list({ q: 'Пушкин' });
     await comments.counts('r1', 'b1');
     await admin.users();
@@ -267,13 +267,37 @@ describe('разделы API', () => {
     expect(urls).toContain('/api/rooms/r1/members');
     expect(urls).toContain('/api/rooms/r1/leave');
     expect(urls).toContain('/api/rooms/r1/books');
-    expect(urls).toContain('/api/books/b1');
-    expect(urls).toContain('/api/books/b1/index.json');
+    /*
+      Адреса чтения несут комнату. Проверка утверждает именно новую форму:
+      оставься старый `/api/books/b1`, проверка прошла бы, а навигация читалки
+      была бы сломана — и зелёный CI этого бы не заметил.
+    */
+    expect(urls).toContain('/api/rooms/r1/books/b1');
+    expect(urls).toContain('/api/rooms/r1/books/b1/index.json');
     // Номер главы в адресе, а не в теле: адрес видно в логах и в кеше.
-    expect(urls).toContain('/api/books/b1/ch/3.json');
+    expect(urls).toContain('/api/rooms/r1/books/b1/ch/3.json');
     expect(urls).toContain('/api/rooms/r1/books/b1/comments/count');
     expect(urls).toContain('/api/admin/users');
     expect(urls).toContain('/api/admin/stats');
+  });
+
+  it('адреса чтения не существуют без комнаты', async () => {
+    const mock = vi.fn().mockResolvedValue(jsonResponse({}));
+    vi.stubGlobal('fetch', mock);
+
+    await books.get('r1', 'b1');
+    await books.index('r1', 'b1');
+    await books.chapter('r1', 'b1', 0);
+
+    const urls = mock.mock.calls.map((call) => (call as [string])[0]);
+
+    /*
+      Негативная проверка к позитивной: маршрут без комнаты означал бы, что
+      читать можно в обход проверки участия, а именно это и закрывается.
+    */
+    for (const url of urls) {
+      expect(url.startsWith('/api/books/')).toBe(false);
+    }
   });
 
   it('реакция — toggle одним вызовом', async () => {

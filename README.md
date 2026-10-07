@@ -149,14 +149,25 @@ cookie работает сама.
 | `POST` | `/api/rooms/:id/join-requests/:rid/approve` `reject` | участник |
 | `POST` | `/api/rooms/:rid/books/upload` | участник, multipart |
 | `POST` | `/api/rooms/:rid/books/from-catalog` | участник |
-| `GET` | `/api/rooms/:rid/books` | участник |
-| `GET` | `/api/books/:id` | вход |
-| `GET` | `/api/books/:id/index.json` | вход, кэш 1 ч |
-| `GET` | `/api/books/:id/ch/:n.json` | вход, кэш 1 сутки |
-| `GET` | `/api/books/:id/file?kind=` | участник |
-| `DELETE` | `/api/books/:id` | владелец комнаты или админ |
+| `GET` | `/api/rooms/:rid/books` | участник или админ |
+| `GET` | `/api/rooms/:rid/books/:bid` | участник или админ, книга в этой комнате |
+| `GET` | `/api/rooms/:rid/books/:bid/index.json` | то же, кэш 1 ч |
+| `GET` | `/api/rooms/:rid/books/:bid/ch/:n.json` | то же, кэш 1 сутки |
+| `GET` | `/api/books/:id/file?kind=` | участник комнаты с книгой, либо каталог |
+| `GET` | `/api/books/:id/cover` | вход |
+| `DELETE` | `/api/books/:id` | админ |
 | `GET` | `/api/catalog?q=` | вход |
 | `GET` | `/files/**` | токен в cookie или `?t=` |
+
+Адреса чтения несут комнату не по привычке. Пока их не было, любой вошедший
+читал любую книгу по её идентификатору: текст нигде не отдавался, и это было
+терпимо — с появлением читалки перестало. Проверяется одно: человек имеет
+доступ к комнате **и** книга лежит в этой комнате. Первое без второго
+пропускало бы участника комнаты А к книге комнаты Б, второе без первого —
+постороннего к любой книге.
+
+Правило одно на все адреса — `canAccessRoom` в `rooms/membership.ts`. Админ
+проходит; см. причину в комментарии там же.
 
 ## Загрузка файлов
 

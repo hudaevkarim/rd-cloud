@@ -306,8 +306,15 @@ export const books = {
     return (await request<{ books: BookSummary[] }>(`/rooms/${roomId}/books`)).books;
   },
 
-  async get(id: string): Promise<BookSummary> {
-    return (await request<{ book: BookSummary }>(`/books/${id}`)).book;
+  /**
+   * Книга для читалки.
+   *
+   * Адрес с комнатой, а не `/books/:id`: чтение доступно участникам комнаты, и
+   * комната приходит путём. Ссылку на книгу без комнаты скопировать нельзя, а
+   * параметр нельзя забыть при добавлении следующего маршрута.
+   */
+  async get(roomId: string, bookId: string): Promise<BookSummary> {
+    return (await request<{ book: BookSummary }>(`/rooms/${roomId}/books/${bookId}`)).book;
   },
 
   /**
@@ -331,13 +338,13 @@ export const books = {
   },
 
   /** Оглавление. Отдаётся как есть, без обёртки, — клиент кэширует им. */
-  async index(bookId: string, signal?: AbortSignal): Promise<BookIndex> {
-    return request(`/books/${bookId}/index.json`, { signal });
+  async index(roomId: string, bookId: string, signal?: AbortSignal): Promise<BookIndex> {
+    return request(`/rooms/${roomId}/books/${bookId}/index.json`, { signal });
   },
 
   /** Одна глава. */
-  async chapter(bookId: string, n: number, signal?: AbortSignal): Promise<ChapterBlock[]> {
-    return request(`/books/${bookId}/ch/${n}.json`, { signal });
+  async chapter(roomId: string, bookId: string, n: number, signal?: AbortSignal): Promise<ChapterBlock[]> {
+    return request(`/rooms/${roomId}/books/${bookId}/ch/${n}.json`, { signal });
   },
 
   /**

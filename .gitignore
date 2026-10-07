@@ -24,6 +24,9 @@ data/
 .tmp-test-data/
 packages/.tmp-test-data/
 
+# Фикстуры книг, собираемые скриптом при запуске тестов.
+packages/.tmp-fixtures/
+
 # Логи
 *.log
 logs/

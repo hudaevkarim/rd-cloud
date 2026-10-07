@@ -47,8 +47,11 @@ import {
 const SAVE_COALESCE_MS = 150;
 
 export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string }) {
-  const book = useQuery<BookSummary>(async () => booksApi.get(bookId), [bookId]);
-  const index = useQuery<BookIndex>(async (signal) => booksApi.index(bookId, signal), [bookId]);
+  const book = useQuery<BookSummary>(async () => booksApi.get(roomId, bookId), [roomId, bookId]);
+  const index = useQuery<BookIndex>(
+    async (signal) => booksApi.index(roomId, bookId, signal),
+    [roomId, bookId],
+  );
   const narrow = useNarrow();
 
   const [chapter, setChapter] = useState(0);
@@ -118,7 +121,7 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
       setChapter(saved.chapter);
     }
     setRestoreDone(true);
-  }, [bookId, index.status, restoreDone]);
+  }, [roomId, bookId, index.status, restoreDone]);
 
   /* ─── Глава ───────────────────────────────────────────────────────────────── */
 
@@ -145,7 +148,7 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
     setChapterError(null);
 
     booksApi
-      .chapter(bookId, chapter, controller.signal)
+      .chapter(roomId, bookId, chapter, controller.signal)
       .then((data) => {
         if (!stale) setBlocks(data);
       })
@@ -158,7 +161,7 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
       stale = true;
       controller.abort();
     };
-  }, [bookId, chapter, chapterCount, index.status, restoreDone]);
+  }, [roomId, bookId, chapter, chapterCount, index.status, restoreDone]);
 
   /* ─── Позиция ─────────────────────────────────────────────────────────────── */
 

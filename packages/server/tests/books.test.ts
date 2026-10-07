@@ -171,9 +171,14 @@ describe('загрузка текстовой книги', () => {
     expect(response.body).not.toContain('filePath');
     expect(response.body).not.toContain('derivedPath');
 
+    /*
+      Адреса чтения несут комнату: права на текст проверяются по ней. Проверки
+      самих прав живут в `tests/reader-access.test.ts`, здесь — только то, что
+      разобранная книга отдаётся по правильному адресу.
+    */
     const index = await app.inject({
       method: 'GET',
-      url: `/api/books/${book.id}/index.json`,
+      url: `/api/rooms/${roomId}/books/${book.id}/index.json`,
       headers: auth(owner.token),
     });
     expect(index.statusCode).toBe(200);
@@ -184,7 +189,7 @@ describe('загрузка текстовой книги', () => {
 
     const chapter = await app.inject({
       method: 'GET',
-      url: `/api/books/${book.id}/ch/0.json`,
+      url: `/api/rooms/${roomId}/books/${book.id}/ch/0.json`,
       headers: auth(owner.token),
     });
     expect(chapter.statusCode).toBe(200);
@@ -192,7 +197,7 @@ describe('загрузка текстовой книги', () => {
 
     const missing = await app.inject({
       method: 'GET',
-      url: `/api/books/${book.id}/ch/99.json`,
+      url: `/api/rooms/${roomId}/books/${book.id}/ch/99.json`,
       headers: auth(owner.token),
     });
     expect(missing.statusCode).toBe(404);

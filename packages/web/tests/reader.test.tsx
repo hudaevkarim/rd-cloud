@@ -144,9 +144,9 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (url: string) => {
       calls.push(`GET ${url}`);
-      if (url === '/api/books/b1') return jsonResponse({ book });
-      if (url === '/api/books/b1/index.json') return jsonResponse(index);
-      const m = /\/api\/books\/b1\/ch\/(\d+)\.json/.exec(url);
+      if (url === '/api/rooms/r1/books/b1') return jsonResponse({ book });
+      if (url === '/api/rooms/r1/books/b1/index.json') return jsonResponse(index);
+      const m = /\/api\/rooms\/r1\/books\/b1\/ch\/(\d+)\.json/.exec(url);
       if (m !== null) {
         const n = Number(m[1]);
         requestedChapters.push(n);

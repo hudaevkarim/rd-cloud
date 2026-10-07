@@ -87,6 +87,63 @@ function renderApp(initial: string, user: typeof ADMIN | typeof READER | null) {
  * комната пришла как объект без названия, и страница отрисовала бы пустой
  * заголовок — тест прошёл бы на сломанной странице.
  */
+/**
+ * Фикстуры читалки для маршрутизации.
+ *
+ * Здесь важно только одно — форма ответа. Раньше адреса чтения отдавали объект
+ * комнаты, и страница падала не на проверке маршрута, а на разборе оглавления.
+ */
+
+const textNode = (text: string) => ({ name: '#text', text, attrs: {}, children: [] });
+
+function readerBook() {
+  return {
+    id: 'b1',
+    title: 'Евгений Онегин',
+    author: 'А. С. Пушкин',
+    description: null,
+    authorBio: null,
+    coverUrl: null,
+    isCatalog: false,
+    language: 'ru',
+    year: null,
+    uploadedById: 'u2',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    hasText: true,
+    hasAudio: false,
+    files: [],
+  };
+}
+
+function readerIndex() {
+  return {
+    version: 1,
+    parserVersion: '1',
+    title: 'Евгений Онегин',
+    author: 'А. С. Пушкин',
+    language: 'ru',
+    totalBlocks: 2,
+    chapters: [
+      {
+        index: 0,
+        id: 'c0',
+        href: 'ch0.xhtml',
+        title: 'Глава первая',
+        blockCount: 2,
+      },
+    ],
+    toc: [],
+    coverHref: null,
+  };
+}
+
+function readerChapter() {
+  return [
+    { index: 0, kind: 'h1', node: { name: 'h1', attrs: {}, children: [textNode('Глава первая')] }, text: 'Глава первая' },
+    { index: 1, kind: 'p', node: { name: 'p', attrs: {}, children: [textNode('Абзац под заголовком.')] }, text: 'Абзац под заголовком.' },
+  ];
+}
+
 function respondByUrl(url: string): unknown {
   if (url.includes('/api/auth/me')) return { user: null };
 
@@ -106,6 +163,19 @@ function respondByUrl(url: string): unknown {
   // `books.length`.
   if (url.endsWith('/books')) return { books: [] };
   if (url === '/api/catalog' || url.startsWith('/api/catalog?')) return { books: [] };
+
+  /*
+    Адреса читалки проверяются ДО ветки `includes('/api/rooms/')` — иначе они
+    перехватываются ею и отдают объект комнаты. На `index.json` это давало
+    `index.data.chapters === undefined`, и `chapterCount` падал с «Cannot read
+    properties of undefined». Проверено: тест «полный адрес открывает читалку»
+    падал именно так.
+
+    Тот же порядок, что и в `respondByUrl` выше: частное раньше общего.
+  */
+  if (/^\/api\/rooms\/[^/]+\/books\/[^/]+\/ch\/\d+\.json$/.test(url)) return readerChapter();
+  if (/^\/api\/rooms\/[^/]+\/books\/[^/]+\/index\.json$/.test(url)) return readerIndex();
+  if (/^\/api\/rooms\/[^/]+\/books\/[^/]+$/.test(url)) return { book: readerBook() };
 
   if (url.includes('/api/rooms/')) {
     return {
@@ -133,6 +203,57 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (url: string) => jsonResponse(respondByUrl(url))),
   );
+});
+
+describe('адрес читалки', () => {
+  it('неполный адрес не открывает читалку', async () => {
+    renderApp('/rooms//books/b1', READER);
+
+    /*
+      Проверка на поведение, а не на код. Проверка в `ReaderRoute` на пустые
+      сегменты была написана и убрана: маршрут `/rooms/:roomId/books/:bookId` на
+      адресе с пустым сегментом не совпадает вовсе, `*` перебрасывает в лобби, и
+      страховка была недостижимой. Проверка, которая не может сработать,
+      защитой не считается — об этом и есть чек-лист.
+
+      Утверждается ровно то, что человек видит: лобби, а не читалка с
+      `/api/rooms//books/…` в запросах.
+    */
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Лобби' })).toBeInTheDocument();
+    });
+
+    const urls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call) => String((call as [string])[0]),
+    );
+
+    /*
+      Ни одного запроса чтения — и, что важнее, ни одного адреса с пустым
+      сегментом. Если бы маршрут всё-таки совпал, запрос ушёл бы в
+      `/api/rooms//books/b1`, и маршрут прошёл бы с ответом «да, запросы были»,
+      не заметив, что они бессмысленные.
+    */
+    expect(urls.some((u) => u.includes('/books/b1'))).toBe(false);
+    expect(urls.some((u) => u.includes('//'))).toBe(false);
+  });
+
+  it('полный адрес открывает читалку', async () => {
+    renderApp('/rooms/abc123/books/b1', READER);
+
+    await waitFor(() => {
+      // Ссылка «В комнату» есть и в шапке читалки, и в её подвале, поэтому
+      // берётся по классу: `getByRole` нашёл бы две и упал.
+      expect(document.querySelector('.reader__back')).not.toBeNull();
+    });
+
+    const urls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call) => String((call as [string])[0]),
+    );
+    // Комната в адресе запроса, а не только в маршруте: забытый `roomId` здесь
+    // означал бы чтение книги мимо проверки участия.
+    expect(urls).toContain('/api/rooms/abc123/books/b1');
+    expect(urls).toContain('/api/rooms/abc123/books/b1/index.json');
+  });
 });
 
 describe('защита маршрутов', () => {

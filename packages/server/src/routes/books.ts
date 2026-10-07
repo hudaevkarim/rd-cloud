@@ -7,7 +7,7 @@ import { prisma } from '../db/client.js';
 import { env } from '../env.js';
 import { AppError } from '../lib/errors.js';
 import { requireAdmin, requireAuth, currentUser } from '../auth/guards.js';
-import { memberRole } from '../rooms/membership.js';
+import { canAccessRoom, memberRole } from '../rooms/membership.js';
 import {
   PARSER_VERSION,
   chapterPath,
@@ -93,7 +93,65 @@ const roomParams = z.object({ roomId: z.string().min(1) });
 const bookParams = z.object({ id: z.string().min(1) });
 /** Пара пары «комната + книга»: снятие связи, а не адрес книги. */
 const roomBookParams = z.object({ roomId: z.string().min(1), bookId: z.string().min(1) });
-const chapterParams = z.object({ id: z.string().min(1), n: z.coerce.number().int().min(0) });
+/** Комната + книга + номер главы: адрес чтения, а не адрес книги. */
+const readerParams = z.object({
+  roomId: z.string().min(1),
+  bookId: z.string().min(1),
+});
+const chapterParams = z.object({
+  roomId: z.string().min(1),
+  bookId: z.string().min(1),
+  n: z.coerce.number().int().min(0),
+});
+
+/**
+ * Проверка доступа к книге в комнате.
+ *
+ * ─── Два условия, а не одно ─────────────────────────────────────────────────
+ *
+ * 1. Человеку доступна комната (`canAccessRoom`: участник либо админ).
+ * 2. Книга лежит именно в этой комнате.
+ *
+ * Второе — не повтор первого. Проверка «комната своя» сама по себе позволяет
+ * участнику комнаты А запросить `/rooms/А/books/Б/index.json` для книги из
+ * комнаты Б: адрес выглядит осмысленным, а `roomId` в нём — просто слово.
+ * Проверка «книга моя» сама по себе, наоборот, пропускает человека из чужой
+ * комнаты к книге, добавленной туда после того, как он ушёл.
+ *
+ * ─── Один middleware на три маршрута ─────────────────────────────────────────
+ *
+ * Маршрутов чтения три, и правило у них одно. Три копии проверки разошлись бы
+ * при первой же правке — это уже случилось с другими проверками доступа, см.
+ * `canAccessRoom` в `rooms/membership.ts`.
+ *
+ * ─── Параметры приходят из адреса ────────────────────────────────────────────
+ *
+ * `roomId` берётся из пути, а не из тела: ссылку на книгу нельзя скопировать
+ * без комнаты, и параметр нельзя забыть, добавляя четвёртый маршрут. Вариант
+ * с query оставляет лазейку — маршрут есть, а `roomId` не пришёл, и что тогда
+ * пришлось бы ещё и разбирать.
+ */
+const requireRoomBook = async (
+  request: FastifyRequest,
+): Promise<{ roomId: string; bookId: string }> => {
+  const me = currentUser(request);
+  const { roomId, bookId } = readerParams.parse(request.params);
+
+  const access = await canAccessRoom(prisma, roomId, me);
+  if (!access.ok) {
+    // Отказ без уточнения, существует ли комната: иначе по различию ответов
+    // можно было бы перебирать идентификаторы.
+    throw AppError.forbidden('Книга доступна только участникам комнаты');
+  }
+
+  const link = await prisma.roomBook.findUnique({
+    where: { roomId_bookId: { roomId, bookId } },
+    select: { bookId: true },
+  });
+  if (link === null) throw AppError.notFound('В этой комнате такой книги нет');
+
+  return { roomId, bookId };
+};
 const fileQuery = z.object({ kind: z.enum(['text', 'audio']) });
 const fromCatalogBody = z.object({ catalogBookId: z.string().min(1) });
 const catalogQuery = z.object({
@@ -741,7 +799,8 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
     const me = currentUser(request);
     const { roomId } = roomParams.parse(request.params);
 
-    if ((await memberRole(prisma, roomId, me.id)) === null) {
+    // Правило — то же, что у маршрутов чтения, через ту же функцию.
+    if (!(await canAccessRoom(prisma, roomId, me)).ok) {
       throw AppError.forbidden('Список книг доступен только участникам комнаты');
     }
 
@@ -754,12 +813,19 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
     return { books: links.map((l) => toBookSummary(l.book)) };
   });
 
-  app.get('/books/:id', { preHandler: requireAuth }, async (request) => {
-    const { id } = bookParams.parse(request.params);
-    const book = await prisma.book.findUnique({ where: { id }, select: bookWithFilesSelect });
-    if (book === null) throw AppError.notFound('Книга');
-    return { book: toBookSummary(book) };
-  });
+  app.get(
+    '/rooms/:roomId/books/:bookId',
+    { preHandler: [requireAuth, requireRoomBook] },
+    async (request) => {
+      const { bookId } = readerParams.parse(request.params);
+      const book = await prisma.book.findUnique({
+        where: { id: bookId },
+        select: bookWithFilesSelect,
+      });
+      if (book === null) throw AppError.notFound('Книга');
+      return { book: toBookSummary(book) };
+    },
+  );
 
   /**
    * Обложка.
@@ -867,23 +933,29 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
    * клиент разбирать его дважды. `max-age` большой: оглавление меняется только
    * при перезагрузке книги, а её загрузка создаёт новую запись.
    */
-  app.get('/books/:id/index.json', { preHandler: requireAuth }, async (request, reply) => {
-    const { id } = bookParams.parse(request.params);
+  app.get(
+    '/rooms/:roomId/books/:bookId/index.json',
+    { preHandler: [requireAuth, requireRoomBook] },
+    async (request, reply) => {
+      const { bookId } = readerParams.parse(request.params);
 
-    const file = await prisma.bookFile.findFirst({
-      where: { bookId: id, kind: 'text', derivedPath: { not: null } },
-      select: { derivedPath: true },
-    });
-    if (file === null || file.derivedPath === null) throw AppError.notFound('Книга не разобрана');
+      const file = await prisma.bookFile.findFirst({
+        where: { bookId, kind: 'text', derivedPath: { not: null } },
+        select: { derivedPath: true },
+      });
+    if (file === null || file.derivedPath === null) {
+        throw AppError.notFound('Книга не разобрана');
+      }
 
-    const content = await readDerived(env.DATA_DIR, indexPath(file.derivedPath));
-    if (content === null) throw AppError.notFound('Оглавление');
+      const content = await readDerived(env.DATA_DIR, indexPath(file.derivedPath));
+      if (content === null) throw AppError.notFound('Оглавление');
 
-    return reply
-      .header('cache-control', 'private, max-age=3600')
-      .type('application/json')
-      .send(content);
-  });
+      return reply
+        .header('cache-control', 'private, max-age=3600')
+        .type('application/json')
+        .send(content);
+    },
+  );
 
   /**
    * Одна глава.
@@ -892,26 +964,30 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
    * полезно знать, что это чинится повторной загрузкой, а не повреждённой
    * ссылкой.
    */
-  app.get('/books/:id/ch/:n.json', { preHandler: requireAuth }, async (request, reply) => {
-    const { id, n } = chapterParams.parse(request.params);
+  app.get(
+    '/rooms/:roomId/books/:bookId/ch/:n.json',
+    { preHandler: [requireAuth, requireRoomBook] },
+    async (request, reply) => {
+      const { bookId, n } = chapterParams.parse(request.params);
 
-    const file = await prisma.bookFile.findFirst({
-      where: { bookId: id, kind: 'text' },
-      select: { id: true, derivedPath: true },
-    });
-    if (file === null) throw AppError.notFound('У книги нет текстового файла');
-    if (file.derivedPath === null) {
-      throw new AppError(409, 'not_parsed', 'Книга не разобрана: загрузите заново');
-    }
+      const file = await prisma.bookFile.findFirst({
+        where: { bookId, kind: 'text' },
+        select: { id: true, derivedPath: true },
+      });
+      if (file === null) throw AppError.notFound('У книги нет текстового файла');
+      if (file.derivedPath === null) {
+        throw new AppError(409, 'not_parsed', 'Книга не разобрана: загрузите заново');
+      }
 
-    const content = await readDerived(env.DATA_DIR, chapterPath(file.derivedPath, n));
-    if (content === null) throw AppError.notFound('Глава');
+      const content = await readDerived(env.DATA_DIR, chapterPath(file.derivedPath, n));
+      if (content === null) throw AppError.notFound('Глава');
 
-    return reply
-      .header('cache-control', 'private, max-age=86400')
-      .type('application/json')
-      .send(content);
-  });
+      return reply
+        .header('cache-control', 'private, max-age=86400')
+        .type('application/json')
+        .send(content);
+    },
+  );
 
   /**
    * Ссылка на оригинал.
@@ -937,12 +1013,23 @@ export const bookRoutes: FastifyPluginAsync = async (app) => {
     });
     if (file === null) throw AppError.notFound(`У книги нет файла типа «${kind}»`);
 
-    // Закрытая комната: файл её участникам доступен, посторонним нет.
+    /*
+      Закрытая комната: файл её участникам доступен, посторонним нет.
+
+      Проверка через ту же `canAccessRoom`, что и у маршрутов чтения. Своя была
+      написана раньше и отличалась от соседней — админ здесь не проходил, там
+      проходил. Расхождение в правилах доступа хуже любого отдельного решения:
+      при разборе невозможно понять, что имелось в виду.
+
+      Книга из каталога проверяется как обычно: она лежит сразу во многих
+      комнатах, и «участник хотя бы одной из них» — это ровно то условие, при
+      котором он её видел в списке.
+    */
     if (book.rooms.length > 0 && !book.isCatalog) {
-      const roles = await Promise.all(
-        book.rooms.map((r) => memberRole(prisma, r.roomId, me.id)),
+      const access = await Promise.all(
+        book.rooms.map((r) => canAccessRoom(prisma, r.roomId, me)),
       );
-      if (!roles.some((r) => r !== null)) {
+      if (!access.some((a) => a.ok)) {
         throw AppError.forbidden('Файл доступен только участникам комнаты');
       }
     }

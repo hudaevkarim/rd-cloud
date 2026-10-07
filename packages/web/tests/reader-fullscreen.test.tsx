@@ -145,9 +145,9 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (url: string) => {
       calls.push(`GET ${url}`);
-      if (url === '/api/books/b1') return jsonResponse({ book });
-      if (url === '/api/books/b1/index.json') return jsonResponse(index);
-      if (/\/api\/books\/b1\/ch\/\d+\.json/.test(url)) {
+      if (url === '/api/rooms/r1/books/b1') return jsonResponse({ book });
+      if (url === '/api/rooms/r1/books/b1/index.json') return jsonResponse(index);
+      if (/\/api\/rooms\/r1\/books\/b1\/ch\/\d+\.json/.test(url)) {
         return jsonResponse([
           block(0, 'h1', 'Глава номер 0'),
           block(1, 'p', 'Абзац первой главы.'),
