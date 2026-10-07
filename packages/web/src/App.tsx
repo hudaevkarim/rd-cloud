@@ -11,7 +11,8 @@ import { CatalogBookPage } from './pages/CatalogBook.js';
 import { AdminCatalogPage } from './pages/AdminCatalog.js';
 import { RoomView } from './rooms/RoomView.js';
 import { Notifications } from './rooms/Notifications.js';
-import { ProfilePage, ReaderPage } from './pages/Placeholders.js';
+import { ReaderPage } from './pages/Reader.js';
+import { ProfilePage } from './pages/Placeholders.js';
 
 /**
  * Витрина компонентов грузится отдельно и только в разработке.

@@ -161,6 +161,62 @@ describe('узкие экраны', () => {
     expect(rule(block, '.bookpage__cover .cover--lg')).toContain('width: 64px');
   });
 
+  it('читалка на узком экране: оглавление становится панелью', () => {
+    const block = mediaBlock('reader.css', '@media (max-width: 767px)');
+
+    // Постоянная боковая колонка на 320px съела бы треть экрана и сузила бы
+    // текст до нечитаемой полосы, поэтому оглавление выезжает поверх.
+    expect(rule(block, '.reader__toc')).toContain('transform: translateX(-100%)');
+    expect(rule(block, '.reader__toc.is-open')).toContain('transform: translateX(0)');
+
+    // Высота считается минус нижняя навигация: с `100dvh` последний абзац и
+    // кнопки перехода уезжали бы под неё.
+    expect(rule(block, '.reader')).toContain('bottomnav-h');
+  });
+
+  it('читалка на узком экране: текст во всю ширину', () => {
+    const block = mediaBlock('reader.css', '@media (max-width: 767px)');
+
+    // Книжный шрифт уменьшается на телефоне: 20px при ширине 320px даёт
+    // пятнадцать знаков в строке и постоянные переносы.
+    expect(rule(block, '.chapter')).toContain('font-size: var(--text-book-sm)');
+    // Кнопки перехода делят строку: по отдельности «Предыдущая» и «Следующая»
+    // не поместились бы рядом и стали бы в две строки.
+    expect(block).toContain('.reader__nav .btn');
+  });
+
+  it('полноэкранный режим прячет панели правилами, а не только флагом', () => {
+    const css = readFileSync(`${STYLES}/reader.css`, 'utf8');
+
+    /*
+      Флаг `reader--bare` без правил ничего не спрятал бы: панели остались бы на
+      месте, а человек решил бы, что кнопка не работает.
+    */
+    for (const selector of ['.reader--bare .reader__bar', '.reader--bare .reader__toc']) {
+      // Правило сгруппировано через запятую, и помощник `rule` это учитывает.
+      expect(rule(css, selector), `«${selector}» должен прятаться`).toContain('display: none');
+    }
+
+    // Ширина колонки текста не меняется при смене режима: иначе перенос слов
+    // «прыгал» бы при переключении.
+    expect(css).toContain('--measure');
+  });
+
+  it('прокручиваемый блок читалки позиционирован', () => {
+    const css = readFileSync(`${STYLES}/reader.css`, 'utf8');
+
+    /*
+      От этого зависит смысл `offsetTop` у абзацев: без `position` он
+      отсчитывается от `body`, а `scrollTop` — от прокручиваемого блока. Две
+      разные системы координат, и восстановление позиции уезжает «куда-то не
+      туда». Наблюдалось в браузере: `scrollY: 8000` в хранилище, глава
+      открывалась наверху.
+    */
+    const at = css.indexOf('.reader__main {');
+    expect(at).not.toBe(-1);
+    expect(css.slice(at, css.indexOf('}', at))).toContain('position: relative');
+  });
+
   it('имя автора и название комнаты в поиске — обычным регистром', () => {
     const css = readFileSync(`${STYLES}/books.css`, 'utf8');
 

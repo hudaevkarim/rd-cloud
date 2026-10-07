@@ -16,6 +16,7 @@ import './styles/layout.css';
 import './styles/pages.css';
 import './styles/rooms.css';
 import './styles/books.css';
+import './styles/reader.css';
 /*
   Стили витрины здесь НЕ подключаются, и это сделано намеренно.
 

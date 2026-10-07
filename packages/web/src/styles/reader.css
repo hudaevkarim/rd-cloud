@@ -1,0 +1,356 @@
+/* ─── Читалка ──────────────────────────────────────────────────────────────
+ *
+ * Три колонки на десктопе, одна на телефоне.
+ *
+ * ─── Почему текст в своём прокручиваемом блоке ──────────────────────────────
+ *
+ * Прокручивается не окно, а `.reader__main`. Иначе шапка и панель глав
+ * уезжали бы вверх вместе с текстом, а «Скрыть виджеты» перестало бы иметь
+ * смысл: прятать нечего. Отдельный блок даёт три вещи сразу — постоянную
+ * шапку, собственную высоту для полосы прокрутки и возможность восстановить
+ * позицию, не трогая окно.
+ *
+ * ─── Почему никаких теней и скруглений ──────────────────────────────────────
+ *
+ * Общее правило проекта: рамка 1px `--rule`, радиус 0, тени нет. Зона для
+ * перетаскивания и плавающая кнопка комментария в 7.4.2 — не исключение.
+ */
+
+/* ─── Каркас ─────────────────────────────────────────────────────────────── */
+
+.reader {
+  display: flex;
+  flex-direction: column;
+  /* Высота вьюпорта минус шапка приложения. `100dvh` учитывает панель
+     адресов на телефоне: с `100vh` нижняя часть текста уезжала бы под неё. */
+  height: calc(100dvh - var(--topbar-h));
+  overflow: hidden;
+}
+
+.reader__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--rule);
+  flex: none;
+}
+
+.reader__back {
+  flex: none;
+}
+
+.reader__where {
+  flex: 1;
+  min-width: 0;
+  /* Название главы может быть длинным и без пробелов: без обрезки оно
+     вытолкнуло бы кнопки за край экрана. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader__toc-toggle,
+.reader__bare-toggle {
+  flex: none;
+  min-height: var(--touch);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--rule);
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  letter-spacing: var(--track-ui);
+  cursor: pointer;
+  /* Анимация только по прозрачности и трансформации: иначе браузер
+     пересчитывает раскладку на каждом кадре, а правило проекта это запрещает. */
+  transition: background-color 120ms linear, color 120ms linear;
+}
+
+.reader__toc-toggle:hover,
+.reader__bare-toggle:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.reader__toc-toggle[aria-expanded='true'] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+/* ─── Полоса прогресса ───────────────────────────────────────────────────── */
+
+.reader__progress {
+  position: relative;
+  height: 2px;
+  flex: none;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.reader__progress-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--accent);
+  /* Масштаб, а не `width`: полоса не пересчитывает раскладку при переходе
+     между главами, а при `transform` это одна операция композитора. */
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 200ms linear;
+}
+
+/* ─── Тело: оглавление и текст ───────────────────────────────────────────── */
+
+.reader__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.reader__toc {
+  width: 220px;
+  flex: none;
+  border-right: 1px solid var(--rule);
+  overflow-y: auto;
+  padding: var(--space-3);
+}
+
+.reader__toc-empty {
+  color: var(--ink-2);
+  margin: 0;
+}
+
+.reader__toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.reader__toc-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  min-height: var(--touch);
+  padding: var(--space-2);
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  line-height: var(--leading-ui);
+  cursor: pointer;
+  transition: color 120ms linear, border-color 120ms linear;
+}
+
+.reader__toc-item:hover {
+  color: var(--ink);
+}
+
+/* Текущая глава помечена полосой слева, а не заливкой: заливка съедала бы
+   строку и выглядела бы как нажатая кнопка. */
+.reader__toc-item.is-current {
+  color: var(--ink);
+  border-left-color: var(--accent);
+}
+
+.reader__main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  /*
+    Позиционирование — обязательное, а не украшение: от него зависит смысл
+    `offsetTop` у блоков текста. Без него ближайший позиционированный предок —
+    `body`, и `offsetTop` абзаца отсчитывается от верха страницы, тогда как
+    `scrollTop` — от этого блока. Две разные системы координат дают прокрутку
+    «куда-то не туда»: восстановление позиции вычисляет сдвиг и промахивается.
+
+    Проверено: при `scrollTop: 8000` и сохранённом `block: 36` книга
+    открывалась наверху главы.
+  */
+  position: relative;
+  padding: var(--space-6) var(--space-4) var(--space-12);
+}
+
+/* ─── Заголовок и текст ──────────────────────────────────────────────────── */
+
+.reader__title {
+  font-family: var(--font-display);
+  font-size: var(--text-title-sm);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--track-title);
+  margin: 0 0 var(--space-2);
+  /* Ширина колонки текста задаётся здесь, а не на `.reader__main`: колонка
+     относится к строке набора, и шириной окна она не управляется. */
+  max-width: var(--measure);
+}
+
+.reader__author {
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  color: var(--ink-2);
+  margin: 0 0 var(--space-4);
+}
+
+.chapter {
+  max-width: var(--measure);
+  font-family: var(--font-book);
+  font-size: var(--text-book);
+  line-height: var(--leading-book);
+  /* Первая строка с отступом — обычная типографика русской книги. */
+  text-indent: 1.5em;
+}
+
+.chapter > :first-child {
+  /* Заголовок не должен уезжать под отступ первой строки. */
+  text-indent: 0;
+}
+
+.chapter p {
+  margin: 0 0 1em;
+  hyphens: auto;
+}
+
+.chapter h1,
+.chapter h2,
+.chapter h3,
+.chapter h4,
+.chapter h5,
+.chapter h6 {
+  font-family: var(--font-display);
+  line-height: var(--leading-tight);
+  text-indent: 0;
+  margin: 1.5em 0 0.6em;
+}
+
+.chapter h1 {
+  font-size: 1.5em;
+}
+
+.chapter h2 {
+  font-size: 1.3em;
+}
+
+.chapter h3 {
+  font-size: 1.15em;
+}
+
+.chapter blockquote {
+  margin: 0 0 1em;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--rule);
+  color: var(--ink-2);
+}
+
+.chapter pre {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: var(--text-book-sm);
+  line-height: 1.5;
+  overflow-x: auto;
+  text-indent: 0;
+  /* `pre` по умолчанию сохраняет переводы строк, а строки книги уже свёрстаны
+     в абзацы: без сброса получаются пустые строки между ними. */
+  white-space: pre-wrap;
+}
+
+.chapter hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 2em 0;
+  text-indent: 0;
+}
+
+.chapter a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ─── Переход между главами ──────────────────────────────────────────────── */
+
+.reader__nav {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  max-width: var(--measure);
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--rule);
+}
+
+/* ─── Полноэкранный режим ────────────────────────────────────────────────── */
+
+.reader--bare .reader__bar,
+.reader--bare .reader__progress {
+  display: none;
+}
+
+.reader--bare .reader__toc {
+  display: none;
+}
+
+.reader--bare .reader__main {
+  /* Оглавление скрыто, колонка текста занимает всю ширину окна: держать
+     прежние отступы значило бы оставить пустое поле слева. */
+  padding: var(--space-8) var(--space-4) var(--space-12);
+}
+
+.reader--bare .chapter,
+.reader--bare .reader__title,
+.reader--bare .reader__nav {
+  /* Та же `--measure`: строка набора не меняется при смене режима, иначе
+     перенос слов «прыгал» бы при переключении. */
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ─── Узкие экраны ───────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .reader {
+    /* Нижняя навигация приложения остаётся на месте, и под ней должен
+       помещаться последний абзац и кнопки перехода. */
+    height: calc(100dvh - var(--topbar-h) - var(--bottomnav-h));
+  }
+
+  /* Оглавление становится выдвижной панелью поверх текста: три колонки на
+     320px не помещаются, а постоянно занятая боковая панель съедала бы
+     треть экрана. */
+  .reader__toc {
+    position: absolute;
+    inset: var(--space-2) auto var(--space-2) 0;
+    width: min(260px, 78vw);
+    background: var(--bg);
+    border-right: 1px solid var(--rule);
+    transform: translateX(-100%);
+    transition: transform 160ms linear;
+    z-index: 2;
+  }
+
+  .reader__toc.is-open {
+    transform: translateX(0);
+  }
+
+  .reader__body {
+    position: relative;
+  }
+
+  .reader__main {
+    padding: var(--space-4) var(--space-3) var(--space-8);
+  }
+
+  .chapter {
+    font-size: var(--text-book-sm);
+  }
+
+  /* Подписи кнопок на узком экране не помещаются рядом: оставляем знаки. */
+  .reader__bar {
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .reader__nav .btn {
+    flex: 1;
+  }
+}
