@@ -24,6 +24,25 @@ import { cleanup } from '@testing-library/react';
 
 afterEach(() => {
   cleanup();
+
+  /*
+    Уборка `body` — общая, а не в каждом файле.
+
+    `cleanup()` из testing-library снимает только свои контейнеры. Узлы,
+    добавленные в `body` руками (фикстуры главы, поля ввода для проверки
+    горячих клавиш), остаются жить и переходят в следующий файл: `singleFork`
+    в конфиге означает один процесс на весь прогон, а значит один `document`.
+
+    Наблюдалось так: `comment-markers.test.ts` оставил абзац «текст про лова…»,
+    и `book-upload.test.tsx` после него упал на `getByText(/текст/)` — на
+    элементе из чужого файла. По отдельности оба файла проходят.
+
+    Общее правило вместо ручной уборки в каждом тесте: тест, который что-то
+    добавил в `body`, не обязан это убирать, иначе про любую новую фикстуру
+    придётся помнить дважды — здесь и в своём файле.
+  */
+  document.body.replaceChildren();
+
   vi.restoreAllMocks();
   window.localStorage.clear();
   document.documentElement.removeAttribute('data-theme');

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiError, books as booksApi } from '../api/client.js';
-import type { BookIndex, BookSummary, ChapterBlock } from '../api/types.js';
+import { ApiError, books as booksApi, comments as commentsApi } from '../api/client.js';
+import type { BookIndex, BookSummary, ChapterBlock, CommentPage, WireComment } from '../api/types.js';
 import { Button } from '../components/ui/Button.js';
 import { Label } from '../components/ui/Label.js';
 import { Rule } from '../components/ui/Rule.js';
@@ -46,6 +46,41 @@ import {
  */
 const SAVE_COALESCE_MS = 150;
 
+/**
+ * Сколько комментариев забираем за один запрос.
+ *
+ * 100 — потолок сервера (`MAX_LIMIT` в `routes/comments.ts`), и `zod`
+ * отвергает большее число как ошибку запроса: страница обсуждения просто не
+ * открылась бы. Значение дублируется здесь намеренно, как `NARROW_QUERY`
+ * ниже: правило одно на стороне сервера и клиента, а общей константы между
+ * пакетами нет.
+ */
+const COMMENT_PAGE_LIMIT = 100;
+
+/**
+ * Постоянный пустой список.
+ *
+ * Нужен, чтобы пропуски отфильтрованных комментариев не выглядели сменой
+ * данных: без него `allComments` получал бы новый массив на каждом рендере, и
+ * зависимость `useMemo` ниже пересчитывала бы фильтр без причины.
+ */
+const EMPTY_COMMENTS: WireComment[] = [];
+
+/**
+ * Номер главы из текстового якоря.
+ *
+ * `anchor` приходит с сервера как `unknown` — это осознанно: значение
+ * присылает сервер, и клиент не должен притворяться, что проверил его тип.
+ * Здесь единственное место, где якорь читается по полям, поэтому проверка
+ * обязана быть здесь, а не в компоненте маркеров.
+ */
+function textAnchorChapter(comment: WireComment): number | null {
+  const anchor = comment.anchor;
+  if (typeof anchor !== 'object' || anchor === null) return null;
+  const value = (anchor as { chapterIndex?: unknown }).chapterIndex;
+  return typeof value === 'number' ? value : null;
+}
+
 export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string }) {
   const book = useQuery<BookSummary>(async () => booksApi.get(roomId, bookId), [roomId, bookId]);
   const index = useQuery<BookIndex>(
@@ -59,6 +94,52 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [bare, setBare] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
+
+  /*
+    Комментарии книги.
+
+    Запрашиваются на книгу, а не на главу: фильтр по `chapterIndex` всё равно
+    делается на странице, а запрос на каждую главу означал бы, что при
+    перелистывании человек ждёт сеть, чтобы увидеть чужие пометки в тексте, и
+    при первом же сбое запроса остаётся с главой без маркеров.
+
+    Потолок `limit` на сервере — 100 (`MAX_LIMIT`), и `zod` отвергает большее
+    число как ошибку запроса. Поэтому «забрать всё» здесь означает 100: на
+    десять-двадцать человек этого хватает с запасом, а когда перестанет —
+    пагинация появится вместе с боковой панелью в 7.4.2.3, где она и нужна.
+
+    Ошибка загрузки не показывается читателю и не мешает чтению: главный текст
+    книги тут важнее обсуждения. Комментарии без маркеров выглядят как обычная
+    страница книги, что и требуется при недоступном обсуждении.
+  */
+  const commentPage = useQuery<CommentPage>(
+    async (signal) => commentsApi.list(roomId, bookId, { limit: COMMENT_PAGE_LIMIT }, signal),
+    [roomId, bookId],
+  );
+  const allComments = commentPage.status === 'ready' ? commentPage.data.comments : EMPTY_COMMENTS;
+  /*
+    Комментарии текущей главы.
+
+    `useMemo` обязателен, а не оптимизация: без него `filter` даёт новый массив
+    на каждом рендере страницы, и `ChapterView` получил бы в пропсах новую
+    ссылку на каждом кадре. Сегодня его эффект не зависит от комментариев, но
+    полагаться на «пока не зависит» — значит оставить мину замедленного взрыва:
+    стоит добавить зависимость в 7.4.2.4, и перерисовка главы станет заметной
+    глазу, а тест на это не укажет.
+
+    Фильтр уважает тип якоря: у аудиокомментария `chapterIndex` нет, и без
+    проверки он отсеивался бы правильно (`undefined !== chapter`), но по
+    неверной причине. Явная проверка читается как правило, а не как совпадение.
+
+    Ответ без массива — тоже не повод падать на книге: `comments` приходит как
+    `CommentPage`, но поле внутри него ничем не защищено на стороне клиента, и
+    при расхождении схем человек потерял бы даже текст. Пустой список даёт
+    обычную страницу книги.
+  */
+  const commentsOfChapter = useMemo(() => {
+    const list = Array.isArray(allComments) ? allComments : EMPTY_COMMENTS;
+    return list.filter((c) => c.anchorType === 'text' && textAnchorChapter(c) === chapter);
+  }, [allComments, chapter]);
 
   /*
     Прокручиваемый блок хранится в ссылке и в состоянии одновременно, и это не
@@ -528,7 +609,13 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
               <h1 className="reader__title">{data.title}</h1>
               <p className="reader__author">{data.author}</p>
               <Rule />
-              <ChapterView blocks={blocks} baseDir={current?.href} onRendered={onRendered} />
+              <ChapterView
+                blocks={blocks}
+                baseDir={current?.href}
+                comments={commentsOfChapter}
+                chapterIndex={chapter}
+                onRendered={onRendered}
+              />
 
               <nav className="reader__nav" aria-label="Главы">
                 <Button variant="ghost" onClick={() => go(-1)} disabled={chapter === 0}>

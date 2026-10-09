@@ -478,8 +478,9 @@ export const comments = {
     roomId: string,
     bookId: string,
     params: { chapter?: number; cursor?: string; limit?: number; anchorType?: string } = {},
+    signal?: AbortSignal,
   ): Promise<CommentPage> {
-    return request(`/rooms/${roomId}/books/${bookId}/comments${query({ ...params })}`);
+    return request(`/rooms/${roomId}/books/${bookId}/comments${query({ ...params })}`, { signal });
   },
 
   async counts(roomId: string, bookId: string): Promise<CommentCounts> {
