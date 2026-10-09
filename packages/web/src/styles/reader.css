@@ -303,6 +303,85 @@
   border-bottom-color: var(--ink);
 }
 
+/* ─── Кнопка «Комментировать» ─────────────────────────────────────────────────
+ *
+ * ─── Почему `fixed`, а не `absolute` внутри главы ─────────────────────────────
+ *
+ * Позиция считается от `getBoundingClientRect()`, то есть в координатах окна.
+ * Кнопка с `position: fixed` берёт те же координаты напрямую, и не нужно ни
+ * искать позиционированного предка, ни прибавлять прокрутку. При прокрутке
+ * кнопка всё равно снимается — значит её «уездание» вместе с текстом ничего бы
+ * не дала.
+ *
+ * ─── Почему она не мешает выделению ───────────────────────────────────────────
+ *
+ * Наведение мыши на кнопку не снимает выделение: браузер снимает его только
+ * при нажатии. Поэтому якорь, посчитанный до нажатия, остаётся верным — и
+ * нажатие не приводит к тому, что якорь строится по уже пустому выделению.
+ */
+.reader__comment-btn {
+  position: fixed;
+  z-index: 30;
+  padding: 0 var(--space-3);
+  /* Высота подписана константой `BUTTON_SIZE` в `CommentComposer`: кнопка
+     должна быть одна и та же и в расчёте позиции, и на экране. */
+  height: 32px;
+
+  background: var(--ink);
+  color: var(--paper);
+  border: 0;
+  border-radius: var(--radius);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  letter-spacing: var(--track-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity var(--transition);
+  animation: fade-in var(--transition) both;
+}
+
+.reader__comment-btn:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ─── Подсказка про один абзац ────────────────────────────────────────────────
+ *
+ * Живёт рядом с местом выделения, а не в тосте: тост живёт четыре секунды и
+ * исчезает, а человек может ещё выделять и не заметить его вовсе.
+ */
+.reader__selection-note {
+  position: fixed;
+  left: var(--gutter);
+  bottom: var(--gutter);
+  z-index: 30;
+  max-width: 280px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: var(--text-ui-sm);
+  animation: fade-in var(--transition) both;
+}
+
+/* ─── Цитата в окне комментария ───────────────────────────────────────────────
+ *
+ * Без рамки слева, в отличие от `blockquote` в тексте книги: здесь это не
+ * цитата из книги, а то, что человек выделил, и левая черта читалась бы как
+ * ссылка на источник, которого нет.
+ */
+.comment__quote {
+  margin: 0 0 var(--space-4);
+  padding: 0 0 0 var(--space-3);
+  border-left: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-family: var(--font-book);
+  font-size: var(--text-book-sm);
+  line-height: var(--leading-book);
+  /* Длинная цитата не должна растягивать окно на два экрана. */
+  max-height: 8em;
+  overflow: auto;
+}
+
 /* ─── Переход между главами ──────────────────────────────────────────────── */
 
 .reader__nav {

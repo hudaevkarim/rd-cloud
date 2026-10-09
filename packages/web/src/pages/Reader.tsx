@@ -8,6 +8,7 @@ import { Rule } from '../components/ui/Rule.js';
 import { Spinner } from '../components/ui/Spinner.js';
 import { messageOf, useQuery } from '../rooms/room-queries.js';
 import { ChapterView } from '../books/ChapterView.js';
+import { CommentComposer } from '../books/CommentComposer.js';
 import {
   createPositionSaver,
   readPosition,
@@ -94,6 +95,8 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
   const [chapterError, setChapterError] = useState<string | null>(null);
   const [bare, setBare] = useState(false);
   const [tocOpen, setTocOpen] = useState(false);
+  /** Контейнер отрисованной главы: по нему ищем якорь выделения. */
+  const [chapterHost, setChapterHost] = useState<HTMLElement | null>(null);
 
   /*
     Комментарии книги.
@@ -112,20 +115,43 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
     книги тут важнее обсуждения. Комментарии без маркеров выглядят как обычная
     страница книги, что и требуется при недоступном обсуждении.
   */
+  /*
+    Комментарии грузятся вместе со страницей, а не по первому выделению.
+
+    Запрос при выделении выглядел бы экономнее, но платил бы каждый раз заново:
+    прокрутка, переход между главами и первый экран — три разных момента, и на
+    первом человек увидел бы главу без чужих пометок, то есть маркеры появились
+    бы не с книгой, а с движением мыши. Один запрос на книгу предсказуем.
+  */
   const commentPage = useQuery<CommentPage>(
     async (signal) => commentsApi.list(roomId, bookId, { limit: COMMENT_PAGE_LIMIT }, signal),
     [roomId, bookId],
   );
-  const allComments = commentPage.status === 'ready' ? commentPage.data.comments : EMPTY_COMMENTS;
+
+  /*
+    Комментарии, добавленные в этой сессии.
+
+    Отдельное состояние, а не перезагрузка списка: ответ сервера содержит уже
+    присланный комментарий, и повторный запрос после отправки стоил бы ещё
+    одного захода в сеть ради данных, которые уже в руках. Список и правленые
+    комментарии соединяются ниже, поэтому оба видны одинаково.
+
+    Пока сокета нет (7.4.2.4), это единственный способ увидеть свой комментарий
+    без перезагрузки страницы: маркер появляется в ту же секунду, что и ответ
+    сервера, и глава не перерисовывается.
+  */
+  const [myComments, setMyComments] = useState<WireComment[]>([]);
+  const addComment = useCallback((comment: WireComment) => {
+    setMyComments((current) => (current.some((c) => c.id === comment.id) ? current : [...current, comment]));
+  }, []);
+
   /*
     Комментарии текущей главы.
 
     `useMemo` обязателен, а не оптимизация: без него `filter` даёт новый массив
     на каждом рендере страницы, и `ChapterView` получил бы в пропсах новую
-    ссылку на каждом кадре. Сегодня его эффект не зависит от комментариев, но
-    полагаться на «пока не зависит» — значит оставить мину замедленного взрыва:
-    стоит добавить зависимость в 7.4.2.4, и перерисовка главы станет заметной
-    глазу, а тест на это не укажет.
+    ссылку на каждом кадре — а его второй эффект зависит от `comments` и
+    пересчитывал бы маркеры на каждом рендере страницы.
 
     Фильтр уважает тип якоря: у аудиокомментария `chapterIndex` нет, и без
     проверки он отсеивался бы правильно (`undefined !== chapter`), но по
@@ -137,9 +163,28 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
     обычную страницу книги.
   */
   const commentsOfChapter = useMemo(() => {
-    const list = Array.isArray(allComments) ? allComments : EMPTY_COMMENTS;
+    /*
+      Два пути, а не `ready ? data.comments : []`.
+
+      Пока комментарий добавлен этой сессией, его надо показать даже если запрос
+      списка ещё грузится: человек только что отправил реплику и ждёт её
+      появления, а пустой список отдал бы пустую главу и убрал бы только что
+      увиденную отметку. Серверный список придёт и добавит своё, а совпадение по
+      `id` уберёт дубль.
+    */
+    const fromServer = commentPage.status === 'ready' ? commentPage.data.comments : EMPTY_COMMENTS;
+    /*
+      Слияние по `id`, а не конкатенация: серверный список и правленый содержат
+      один и тот же комментарий, как только список перезагрузится — в 7.4.2.4
+      это случится при первом же событии сокета. Без проверки на блоке появился
+      бы второй маркер поверх первого, и в списке было бы два одинаковых.
+    */
+    const seen = new Set(myComments.map((c) => c.id));
+    const list = Array.isArray(fromServer)
+      ? [...fromServer.filter((c) => !seen.has(c.id)), ...myComments]
+      : myComments;
     return list.filter((c) => c.anchorType === 'text' && textAnchorChapter(c) === chapter);
-  }, [allComments, chapter]);
+  }, [commentPage, myComments, chapter]);
 
   /*
     Прокручиваемый блок хранится в ссылке и в состоянии одновременно, и это не
@@ -247,6 +292,14 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
   /* ─── Позиция ─────────────────────────────────────────────────────────────── */
 
   const onRendered = useCallback((chapterHost: HTMLElement) => {
+    /*
+      Контейнер главы нужен не только для позиции: по нему вычисляется якорь
+      из выделения мышью. React не создаёт новый элемент при каждом рендере,
+      поэтому присваивание того же значения состояния перерисовку не вызывает —
+      лишних проходов на каждый ответ сервера не будет.
+    */
+    setChapterHost(chapterHost);
+
     // Прокручивается не глава, а блок вокруг неё, поэтому ссылка на него, а не
     // сам `chapterHost`.
     const host = scrollerRef.current;
@@ -629,6 +682,20 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
           )}
         </div>
       </div>
+
+      {/*
+        Комментарии к тексту живут вне прокручиваемого блока, но внутри каркаса
+        читалки: их кнопка позиционируется от координат окна, а окно при
+        `position: fixed` не зависит от прокрутки — поэтому при листании кнопка
+        не уезжает вместе с абзацем.
+      */}
+      <CommentComposer
+        host={chapterHost}
+        chapterIndex={chapter}
+        roomId={roomId}
+        bookId={bookId}
+        onCreated={addComment}
+      />
     </div>
   );
 }

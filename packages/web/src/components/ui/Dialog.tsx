@@ -34,19 +34,35 @@ export function Dialog({
   footer?: ReactNode;
 }) {
   const panel = useRef<HTMLDivElement | null>(null);
-  // Элемент, который был активен до открытия. Сохраняется в момент рендера
-  // с открытым окном, а не в обработчике нажатия — иначе в React 18 со
-  // строгим режимом он успел бы сброситься.
+  /*
+    Элемент, который был активен до открытия.
+
+    Берётся в момент рендера с открытым окном, а не в обработчике нажатия: в
+    React 18 со строгим режимом обработчик отработал бы дважды и ссылка
+    успела бы превратиться в элемент внутри окна. В момент рендера активным
+    ещё элемент снаружи — `autoFocus` ставится позже, при фиксации дерева.
+  */
   const opener = useRef<HTMLElement | null>(null);
+  if (open && opener.current === null) {
+    opener.current = document.activeElement as HTMLElement | null;
+  }
 
   useEffect(() => {
     if (!open) return;
 
-    opener.current = document.activeElement as HTMLElement | null;
+    /*
+      Фокус на само окно — но только если внутри него ещё ничего не оказалось.
 
-    // Фокус на самом окне, а не на первой кнопке внутри: автофокус на кнопке
-    // закрытия приводит к тому, что Enter сразу закрывает окно.
-    panel.current?.focus();
+      Так полагается `autoFocus` поля: он срабатывает при фиксации дерева, а этот
+      эффект выполняется после. Без проверки окно забирало бы фокус обратно на
+      себя, и человек увидел бы пустое поле вместо того, в которое он уже
+      начал печатать.
+
+      */
+    const active = document.activeElement;
+    if (active === null || active === document.body || !panel.current?.contains(active)) {
+      panel.current?.focus();
+    }
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';

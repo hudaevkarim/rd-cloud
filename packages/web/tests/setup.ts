@@ -65,6 +65,42 @@ Object.defineProperty(window, 'matchMedia', {
 Object.defineProperty(window, 'scrollTo', { writable: true, value: () => undefined });
 
 /**
+ * `Range.getBoundingClientRect` и `getClientRects` в jsdom отсутствуют.
+ *
+ * Нужны кнопке «Комментировать»: она встаёт над выделенным фрагментом и без
+ * геометрии выделения позиционировать её нечем. В браузере метод есть всегда,
+ * то есть это пробел jsdom, а не проверки.
+ *
+ * Значение нулевое намеренно: выделение в jsdom нигде не нарисовано, и любое
+ * ненулевое значение было бы выдумкой, от которой зависят тесты позиции.
+ * Проверки, которым положение важно, задают прямоугольник сами — см. тесты
+ * `CommentComposer`.
+ */
+function zeroRect(): DOMRect {
+  return {
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: 0,
+    height: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
+for (const method of ['getBoundingClientRect', 'getClientRects'] as const) {
+  Object.defineProperty(Range.prototype, method, {
+    writable: true,
+    configurable: true,
+    value: function rangeGeometry(this: Range) {
+      return method === 'getBoundingClientRect' ? zeroRect() : Object.assign([], { item: () => null });
+    },
+  });
+}
+
+/**
  * Заглушка `ResizeObserver`.
  *
  * Обратный вызов не вызывается: в jsdom размеры не меняются, а вызывать его
