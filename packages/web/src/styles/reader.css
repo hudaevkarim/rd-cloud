@@ -382,6 +382,291 @@
   overflow: auto;
 }
 
+/* ─── Панель комментариев ───────────────────────────────────────────────────
+ *
+ * Третья колонка той же строки, что и текст: `flex: none` и своя ширина, иначе
+ * `flex: 1` у текста отдаст панели ровно столько, сколько останется, и колонка
+ * набора поедет при появлении панели.
+ */
+.comments {
+  width: 320px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--rule);
+  /* Панель не сворачивается в ноль на десктопе: человек читает книгу и хочет
+     видеть обсуждение рядом. Сворачивание включается кнопкой в шапке, и тогда
+     колонка уезжает, а текст занимает освободившееся место. */
+  overflow: hidden;
+}
+
+.comments__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--rule);
+  flex: none;
+}
+
+.comments__title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-ui);
+  font-weight: 400;
+  letter-spacing: var(--track-ui);
+}
+
+.comments__count {
+  color: var(--ink-2);
+}
+
+.comments__close {
+  flex: none;
+  min-width: var(--touch);
+  min-height: var(--touch);
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.comments__close:hover {
+  color: var(--ink);
+}
+
+.comments__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4) var(--space-12);
+}
+
+/*
+  Свёрнутая панель убирается целиком, а не сжимается в ноль.
+
+  Сжатие оставило бы рамку в один пиксель и пустой вертикальный столбик между
+  оглавлением и текстом: человек видел бы, что «здесь что-то есть», и не мог
+  понять, что именно и как это открыть.
+*/
+.comments:not(.is-open) {
+  display: none;
+}
+
+/*
+  Переключатель в шапке читалки — единственный способ открыть панель: у
+  свёрнутой панели нет ни кнопки, ни строки, к которой можно было бы придраться.
+  Без него панель закрывалась бы навсегда.
+*/
+.reader__comments-toggle {
+  flex: none;
+  min-height: var(--touch);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--rule);
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  letter-spacing: var(--track-ui);
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.reader__comments-toggle:hover {
+  border-color: var(--ink);
+}
+
+.comments__empty {
+  color: var(--ink-2);
+  margin: 0;
+}
+
+/* ─── Комментарий ──────────────────────────────────────────────────────────── */
+
+.comment {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--rule);
+  /*
+    Кликабельность — не подчёркивание всей карточки, а смена фона: подчёркивание
+    читалось бы как ссылка, а ссылки здесь нет — есть переход к маркеру в тексте.
+  */
+  cursor: pointer;
+  transition: background-color var(--transition);
+}
+
+.comment:hover {
+  background: var(--paper-2);
+}
+
+/*
+  Подсветка найденного комментария — одна вспышка фона за секунду.
+
+  Фон, а не рамка: рамка меняла бы ширину карточки и дёргала бы соседние строки.
+*/
+.comment.is-flash {
+  animation: comment-flash 1s ease-out;
+}
+
+@keyframes comment-flash {
+  from {
+    background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+}
+
+.comment__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+/* Круг 24px — тот же размер, что у подписи автора в шапке комнаты: один масштаб
+   на два экрана, иначе в панели аватары выглядели бы крупнее, чем в списке. */
+.comment__avatar {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: var(--rule);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: var(--track-label-sm);
+}
+
+.comment__author {
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  letter-spacing: var(--track-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comment__mine {
+  color: var(--ink-2);
+}
+
+.comment__time {
+  margin-left: auto;
+  color: var(--ink-2);
+  flex: none;
+}
+
+/*
+  Цитата под автором — то, к чему комментарий привязан.
+
+  Без заливки и с обрезкой до двух строк: цитата нужна как напоминание «о чём
+  речь», а не как второй текст комментария.
+*/
+.comment__quote-inline {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--rule);
+  color: var(--ink-2);
+  font-family: var(--font-book);
+  font-size: var(--text-ui-sm);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.comment__text {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  line-height: var(--leading-ui);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.comment__foot {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.comment__link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--ink-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-ui-sm);
+  letter-spacing: var(--track-ui);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.comment__link:hover {
+  color: var(--accent);
+}
+
+/* ─── Ответы ───────────────────────────────────────────────────────────────── */
+
+/*
+  Отступ слева и вертикальная черта — единственный признак вложенности.
+
+  Рамка слева, а не отступ рамки: вложенность должна читаться структурой, а не
+  ещё одной линией на обсуждении.
+*/
+.comment__replies {
+  margin-top: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--rule);
+}
+
+.comment__reply-card {
+  padding: var(--space-2) 0;
+}
+
+.comment__reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.comment__reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* ─── Подсветка маркера из панели ──────────────────────────────────────────── */
+
+.chapter mark.rd-comment-marker.is-flash {
+  animation: marker-flash 1s ease-out;
+}
+
+/*
+  Мигание цветом границы, а не заливкой.
+
+  Заливка акцентом на время секунды выглядела бы как выделение текста, то есть
+  человек подумал бы, что фразу выделил он сам. Линия, которая гаснет обратно,
+  читается как «сюда пришли».
+*/
+@keyframes marker-flash {
+  from {
+    border-bottom-color: var(--accent);
+    border-bottom-width: 3px;
+  }
+  to {
+    border-bottom-color: var(--accent);
+    border-bottom-width: 1px;
+  }
+}
+
 /* ─── Переход между главами ──────────────────────────────────────────────── */
 
 .reader__nav {
@@ -405,6 +690,13 @@
   display: none;
 }
 
+/* Панель в режиме «виджеты скрыты» убирается вместе с оглавлением: режим
+   означает «только текст», и третья колонка противоречит обещанию. */
+.reader--bare .comments,
+.reader--bare .reader__comments-toggle {
+  display: none;
+}
+
 .reader--bare .reader__main {
   /* Оглавление скрыто, колонка текста занимает всю ширину окна: держать
      прежние отступы значило бы оставить пустое поле слева. */
@@ -418,6 +710,18 @@
      перенос слов «прыгал» бы при переключении. */
   margin-left: auto;
   margin-right: auto;
+}
+
+/* ─── Планшет ────────────────────────────────────────────────────────────────
+ *
+ * Три колонки по 220 + 280 пикселей плюс текст не помещаются в 768px, поэтому
+ * оглавление уезжает, а панель остаётся: обсуждение рядом с текстом полезнее,
+ * чем оглавление, которое и так можно открыть кнопкой.
+ */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .comments {
+    width: 280px;
+  }
 }
 
 /* ─── Узкие экраны ───────────────────────────────────────────────────────── */
@@ -467,5 +771,28 @@
 
   .reader__nav .btn {
     flex: 1;
+  }
+
+  /*
+    Панель уезжает справа тем же приёмом, что оглавление слева.
+
+    Лист снизу не выбран сознательно: он потребовал бы жеста перетаскивания,
+    подложки и второго правила закрытия — трёх новых вещей ради списка, который
+    помещается в ту же форму. Маркеры в тексте при этом остаются кликабельными:
+    клик открывает панель и подкручивает её к комментарию.
+  */
+  .comments {
+    position: absolute;
+    inset: var(--space-2) var(--space-2) var(--space-2) auto;
+    width: min(320px, 86vw);
+    background: var(--paper);
+    border: 1px solid var(--ink);
+    transform: translateX(110%);
+    transition: transform 160ms linear;
+    z-index: 3;
+  }
+
+  .comments.is-open {
+    transform: translateX(0);
   }
 }

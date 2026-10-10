@@ -7,8 +7,13 @@ import { Label } from '../components/ui/Label.js';
 import { Rule } from '../components/ui/Rule.js';
 import { Spinner } from '../components/ui/Spinner.js';
 import { messageOf, useQuery } from '../rooms/room-queries.js';
+import { useAuth } from '../auth/auth-context.js';
 import { ChapterView } from '../books/ChapterView.js';
 import { CommentComposer } from '../books/CommentComposer.js';
+import { CommentsPanel } from '../books/CommentsPanel.js';
+import { addComment as addToTree } from '../books/comments-tree.js';
+import { scrollBehavior } from '../books/scroll-behavior.js';
+import { COMMENT_ATTR } from '../books/comment-markers.js';
 import {
   createPositionSaver,
   readPosition,
@@ -68,6 +73,16 @@ const COMMENT_PAGE_LIMIT = 100;
 const EMPTY_COMMENTS: WireComment[] = [];
 
 /**
+ * Сколько миллисекунд горит подсветка найденного комментария.
+ *
+ * Ровно секунда: меньше — человек не успевает посмотреть, куда его увели, больше
+ * — подсветка начинает выглядеть как постоянное выделение и мешает читать
+ * дальше. Длительность анимации в CSS такая же, синхронно они не связаны: класс
+ * снимается по этому таймеру, а анимация просто заканчивается вместе с ним.
+ */
+const FLASH_MS = 1_000;
+
+/**
  * Номер главы из текстового якоря.
  *
  * `anchor` приходит с сервера как `unknown` — это осознанно: значение
@@ -89,6 +104,12 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
     [roomId, bookId],
   );
   const narrow = useNarrow();
+  /*
+    Идентификатор текущего пользователя — только ради пометки «вы» у собственных
+    ответов. Пока человек не входил, его нет, и подставлять пустую строку
+    правильнее, чем рисовать пометку у всех подряд.
+  */
+  const { user: me } = useAuth();
 
   const [chapter, setChapter] = useState(0);
   const [blocks, setBlocks] = useState<ChapterBlock[] | null>(null);
@@ -142,8 +163,86 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
   */
   const [myComments, setMyComments] = useState<WireComment[]>([]);
   const addComment = useCallback((comment: WireComment) => {
-    setMyComments((current) => (current.some((c) => c.id === comment.id) ? current : [...current, comment]));
+    setMyComments((current) => (current.some((c) => c.id === comment.id) ? current : addToTree(current, comment)));
   }, []);
+
+  /*
+    Ответ приходит с тем же якорем, что и родитель, поэтому он попадает в
+    `commentsOfChapter` тем же фильтром и без отдельной обработки: единственное,
+    что нужно, — положить его не в список, а в тред родителя.
+  */
+  const [myReplies, setMyReplies] = useState<Record<string, WireComment[]>>({});
+  const addReply = useCallback((parentId: string, reply: WireComment) => {
+    setMyReplies((current) => {
+      const existing = current[parentId] ?? [];
+      if (existing.some((r) => r.id === reply.id)) return current;
+      return { ...current, [parentId]: [...existing, reply] };
+    });
+  }, []);
+
+  /** Комментарий, к которому панель должна подкрутить: из маркера в тексте. */
+  const [panelFocus, setPanelFocus] = useState<string | null>(null);
+  /** Комментарий, который в панели горит после клика по маркеру. */
+  const [panelFlash, setPanelFlash] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  /** Идентификатор маркера, который человек открыл из панели. */
+  const [markFlash, setMarkFlash] = useState<string | null>(null);
+
+  /**
+   * Подсветка гаснет сама.
+   *
+   * Таймер, а не постоянный класс: иначе подсветка горела бы до следующего
+   * клика и выглядела бы как «этот комментарий выделен», а не «сюда пришли».
+   */
+  useEffect(() => {
+    if (panelFlash === null) return;
+    const timer = window.setTimeout(() => setPanelFlash(null), FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [panelFlash]);
+
+  useEffect(() => {
+    if (markFlash === null) return;
+    const timer = window.setTimeout(() => setMarkFlash(null), FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [markFlash]);
+
+  /** Клик по маркеру в тексте: панель к этому комментарию. */
+  const onMarkerClick = useCallback((commentId: string) => {
+    setPanelOpen(true);
+    setPanelFocus(commentId);
+    setPanelFlash(commentId);
+  }, []);
+
+  /**
+   * Клик по комментарию в панели: текст к его маркеру.
+   *
+   * Прокрутка идёт по самому маркеру, а не по блоку: человек кликнул на
+   * конкретную фразу и хочет видеть именно её, а не начало абзаца.
+   */
+  const onCardClick = useCallback((commentId: string) => {
+    setPanelOpen(true);
+    const mark = chapterHost?.querySelector(`[data-comment-id="${commentId}"]`);
+    if (mark === undefined || mark === null) return;
+    mark.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
+    setMarkFlash(commentId);
+  }, [chapterHost]);
+
+  /*
+    Клик по маркеру должен и панель открыть, и комментарий найти. Слушатель
+    висит на контейнере главы, а не на документе: перехватывать клики по всей
+    странице означало бы ловить и нажатия на панели, и на кнопки читалки.
+  */
+  useEffect(() => {
+    if (chapterHost === null) return;
+    const onClick = (event: MouseEvent): void => {
+      const mark = (event.target as HTMLElement | null)?.closest?.(`[${COMMENT_ATTR}]`);
+      if (mark === null || mark === undefined) return;
+      const id = mark.getAttribute(COMMENT_ATTR);
+      if (id !== null && id !== '') onMarkerClick(id);
+    };
+    chapterHost.addEventListener('click', onClick);
+    return () => chapterHost.removeEventListener('click', onClick);
+  }, [chapterHost, onMarkerClick]);
 
   /*
     Комментарии текущей главы.
@@ -180,11 +279,15 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
       бы второй маркер поверх первого, и в списке было бы два одинаковых.
     */
     const seen = new Set(myComments.map((c) => c.id));
-    const list = Array.isArray(fromServer)
+    const merged = Array.isArray(fromServer)
       ? [...fromServer.filter((c) => !seen.has(c.id)), ...myComments]
       : myComments;
-    return list.filter((c) => c.anchorType === 'text' && textAnchorChapter(c) === chapter);
-  }, [commentPage, myComments, chapter]);
+    const withReplies = merged.map((c) => {
+      const replies = myReplies[c.id];
+      return replies === undefined || replies.length === 0 ? c : { ...c, replies: [...(c.replies ?? []), ...replies] };
+    });
+    return withReplies.filter((c) => c.anchorType === 'text' && textAnchorChapter(c) === chapter);
+  }, [commentPage, myComments, myReplies, chapter]);
 
   /*
     Прокручиваемый блок хранится в ссылке и в состоянии одновременно, и это не
@@ -581,6 +684,16 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
 
         <button
           type="button"
+          className="reader__comments-toggle"
+          onClick={() => setPanelOpen((on) => !on)}
+          aria-pressed={panelOpen}
+          aria-label="Комментарии к главе"
+        >
+          Комментарии{commentsOfChapter.length > 0 && ` · ${commentsOfChapter.length}`}
+        </button>
+
+        <button
+          type="button"
           className="reader__bare-toggle"
           onClick={() => setBare((on) => !on)}
           aria-pressed={bare}
@@ -668,6 +781,7 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
                 comments={commentsOfChapter}
                 chapterIndex={chapter}
                 onRendered={onRendered}
+                flashId={markFlash}
               />
 
               <nav className="reader__nav" aria-label="Главы">
@@ -681,6 +795,29 @@ export function ReaderPage({ roomId, bookId }: { roomId: string; bookId: string 
             </>
           )}
         </div>
+
+        {/*
+          Панель — третья колонка внутри `.reader__body`, а не рядом с ним:
+          иначе её ширина не вошла бы в ту же строку и колонка текста не сдвинулась
+          бы при её появлении.
+
+          На узком экране та же разметка уезжает поверх текста по `translateX`,
+          как оглавление: две выдвижные панели с одинаковым приёмом и одинаковым
+          правилом закрытия — это меньше кода, чем лист снизу с новым жестом.
+        */}
+        <CommentsPanel
+          roomId={roomId}
+          bookId={bookId}
+          comments={commentsOfChapter}
+          meId={me?.id ?? ''}
+          focusId={panelFocus}
+          flashId={panelFlash}
+          open={panelOpen}
+          onToggle={() => setPanelOpen((on) => !on)}
+          onAdd={addComment}
+          onAddReply={addReply}
+          onPick={onCardClick}
+        />
       </div>
 
       {/*

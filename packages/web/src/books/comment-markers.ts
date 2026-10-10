@@ -34,6 +34,15 @@ import type { WireComment } from '../api/types.js';
 const MARKER_CLASS = 'rd-comment-marker';
 
 /**
+ * Атрибут с идентификатором комментария на маркере.
+ *
+ * Экспортируется, потому что по нему работают обе стороны связи: панель ищет
+ * маркер комментария, а маркер — запись в панели. Строка живёт в одном месте
+ * иначе разъехалась бы между наложением и поиском.
+ */
+export const COMMENT_ATTR = 'data-comment-id';
+
+/**
  * Оборачивает цитаты комментариев в `<mark>`.
  *
  * `chapterIndex` обязателен, и это не перестраховка.
@@ -88,7 +97,7 @@ export function applyCommentMarkers(
       end = found.end;
     }
 
-    wrapRange(blockEl, start, end);
+    wrapRange(blockEl, start, end, comment.id);
   }
 }
 
@@ -132,7 +141,7 @@ function isTextAnchor(anchor: unknown): anchor is TextAnchor {
  * может быть разбит на много узлов (инлайновые теги, прошлые маркеры), поэтому
  * узлы обходятся по порядку, а границы диапазона попадают внутрь узлов.
  */
-function wrapRange(container: HTMLElement, start: number, end: number): void {
+function wrapRange(container: HTMLElement, start: number, end: number, commentId: string): void {
   if (end <= start) return;
   const doc = container.ownerDocument;
 
@@ -169,6 +178,23 @@ function wrapRange(container: HTMLElement, start: number, end: number): void {
 
     const mark = doc.createElement('mark');
     mark.className = MARKER_CLASS;
+    /*
+      Идентификатор комментария на самой обёртке.
+
+      Без него двусторонняя связь строилась бы по координатам: панель знала бы,
+      где комментарий, а текст — где подчёркивание, и единственным общим
+      ключом оставалось бы «цитата и блок». При пересборке книги и одинаковых
+      цитатах в разных абзацах это дало бы прыжок не туда.
+
+      Атрибут ставится здесь, а не ищется в обратном порядке при наведении:
+      обход готового DOM ради того, чтобы сопоставить его с тем, что уже
+      сопоставлено при наложении, — это повторная работа и лишняя точка отказа.
+
+      Одна цитата может дать несколько обёрток, если она пересекает инлайновый
+      тег. Идентификатор у них один — и это верно: поиск по панели берёт первую
+      найденную, а прокрутка к цитате показывает её целиком.
+    */
+    mark.setAttribute(COMMENT_ATTR, commentId);
     mark.textContent = middle;
 
     const parent = textNode.parentNode;

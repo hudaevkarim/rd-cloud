@@ -42,6 +42,7 @@ afterEach(() => {
     придётся помнить дважды — здесь и в своём файле.
   */
   document.body.replaceChildren();
+  resetScrollCalls();
 
   vi.restoreAllMocks();
   window.localStorage.clear();
@@ -76,6 +77,40 @@ Object.defineProperty(window, 'scrollTo', { writable: true, value: () => undefin
  * Проверки, которым положение важно, задают прямоугольник сами — см. тесты
  * `CommentComposer`.
  */
+/**
+ * `scrollIntoView` в jsdom отсутствует.
+ *
+ * Прокрутка к маркеру и к комментарию идёт через него: браузер сам знает, как
+ * доехать до элемента внутри прокручиваемого блока, и это единственный способ не
+ * пересчитывать координаты вручную.
+ *
+ * Заглушка записывает вызовы: проверки двусторонней связи (маркер ↔ панель)
+ * именно на это и смотрят — в jsdom прокрутки нет, и результата у метода нет,
+ * остаётся только факт, что его позвали, с правильными параметрами.
+ */
+const scrollCalls: Array<{
+  target: Element;
+  options: ScrollIntoViewOptions | boolean | undefined;
+}> = [];
+
+export function scrollIntoViewCalls(): ReadonlyArray<{
+  target: Element;
+  options: ScrollIntoViewOptions | boolean | undefined;
+}> {
+  return scrollCalls;
+}
+
+export function resetScrollCalls(): void {
+  scrollCalls.length = 0;
+}
+
+Element.prototype.scrollIntoView = function scrollIntoView(
+  this: Element,
+  options?: ScrollIntoViewOptions | boolean,
+): void {
+  scrollCalls.push({ target: this, options });
+};
+
 function zeroRect(): DOMRect {
   return {
     x: 0,

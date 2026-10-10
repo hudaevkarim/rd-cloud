@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { renderChapter } from '@rd/library/render';
 import type { ChapterBlock, WireComment } from '../api/types.js';
-import { applyCommentMarkers, clearCommentMarkers } from './comment-markers.js';
+import { applyCommentMarkers, clearCommentMarkers, COMMENT_ATTR } from './comment-markers.js';
+
+/** Класс кратковременной подсветки маркера. */
+const FLASH_CLASS = 'is-flash';
 
 /**
  * Глава книги, построенная рендерером библиотеки.
@@ -23,6 +26,7 @@ export function ChapterView({
   baseDir,
   comments,
   chapterIndex,
+  flashId,
   onRendered,
 }: {
   blocks: ChapterBlock[];
@@ -46,6 +50,13 @@ export function ChapterView({
    * главе. Молча.
    */
   chapterIndex?: number;
+  /**
+   * Комментарий, подсвеченный после клика по нему в панели.
+   *
+   * Подсветка идёт классом на существующем маркере, а не перерисовкой главы:
+   * перерисовка сбросила бы прокрутку и вернула бы человека в начало.
+   */
+  flashId?: string | null;
   /**
    * Вызывается после того, как блоки появились в DOM. Первым аргументом идёт
    * сам контейнер.
@@ -145,6 +156,24 @@ export function ChapterView({
       applyCommentMarkers(host, comments, chapterIndex);
     }
   }, [blocks, comments, chapterIndex]);
+
+  /*
+    Подсветка маркера — отдельным проходом, а не частью наложения.
+
+    Наложение не знает, что человек только что пришёл из панели: подсветка
+    появляется позже и без новых комментариев, то есть когда второй эффект
+    давно отработал и перезапускать его ради одного класса незачем. Класс
+    снимает страница по своему таймеру.
+  */
+  useEffect(() => {
+    const host = ref.current;
+    if (host === null) return;
+    for (const mark of Array.from(host.querySelectorAll(`.${FLASH_CLASS}`))) {
+      mark.classList.remove(FLASH_CLASS);
+    }
+    if (flashId === null || flashId === undefined) return;
+    host.querySelector(`[${COMMENT_ATTR}="${flashId}"]`)?.classList.add(FLASH_CLASS);
+  }, [flashId]);
 
   return <div className="chapter" ref={ref} />;
 }
