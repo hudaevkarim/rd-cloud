@@ -34,17 +34,27 @@ export function Dialog({
   footer?: ReactNode;
 }) {
   const panel = useRef<HTMLDivElement | null>(null);
-  /*
-    Элемент, который был активен до открытия.
-
-    Берётся в момент рендера с открытым окном, а не в обработчике нажатия: в
-    React 18 со строгим режимом обработчик отработал бы дважды и ссылка
-    успела бы превратиться в элемент внутри окна. В момент рендера активным
-    ещё элемент снаружи — `autoFocus` ставится позже, при фиксации дерева.
-  */
+  /** Элемент, который был активен до открытия окна. */
   const opener = useRef<HTMLElement | null>(null);
+
+  /*
+    Открывающий запоминается при РЕНДЕРЕ, а не в эффекте.
+
+    Причина в порядке: `autoFocus` поля срабатывает при фиксации дерева, то есть
+    между рендером и эффектом. Запомнив активный элемент в эффекте, мы записали
+    бы само поле окна — и после закрытия фокус вернулся бы в удалённый узел, то
+    есть в `<body>`. Именно это и происходило: открыл «Новаякомната», закрыл —
+    и фокус пропал.
+
+    Условие «снаружи» защищает от лишних проходов: при горячей замене модуля
+    ссылка может обнулиться, пока окно уже открыто, и тогда активным будет сам
+    контейнер окна. Запомнить его — значит вернуть фокус в никуда.
+  */
   if (open && opener.current === null) {
-    opener.current = document.activeElement as HTMLElement | null;
+    const active = document.activeElement;
+    if (active !== null && active !== document.body && !panel.current?.contains(active)) {
+      opener.current = active as HTMLElement;
+    }
   }
 
   useEffect(() => {
@@ -57,8 +67,7 @@ export function Dialog({
       эффект выполняется после. Без проверки окно забирало бы фокус обратно на
       себя, и человек увидел бы пустое поле вместо того, в которое он уже
       начал печатать.
-
-      */
+    */
     const active = document.activeElement;
     if (active === null || active === document.body || !panel.current?.contains(active)) {
       panel.current?.focus();
@@ -78,7 +87,10 @@ export function Dialog({
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
-      opener.current?.focus?.();
+      // Ссылка обнуляется: следующее открыние запомнит свой элемент, а не прошлый.
+      const back = opener.current;
+      opener.current = null;
+      back?.focus?.();
     };
   }, [open, onClose]);
 
